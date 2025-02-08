@@ -75,6 +75,9 @@ app.get("/api/podcasts", async (req, res) => {
     for (const item of latestEpisodes) {
         const uniqueId = item.guid || (item.link + "_" + item.pubDate);
 
+        // Extract the audio URL from the enclosure property (if available)
+        const audioUrl = item.enclosure ? item.enclosure.url : null;
+
         await Episode.findOneAndUpdate(
         { uniqueId: uniqueId },
         {
@@ -82,6 +85,7 @@ app.get("/api/podcasts", async (req, res) => {
           pubDate: new Date(item.pubDate),
           link: item.link,
           uniqueId: uniqueId,
+          audioUrl: audioUrl,
         },
         { upsert: true, new: true }
       ).exec();

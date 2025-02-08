@@ -33,6 +33,15 @@ function App() {
               <li key={episode._id || index}>
                 <strong>{episode.title}</strong> -{" "}
                 {new Date(episode.pubDate).toLocaleDateString()}
+                {episode.audioUrl && (
+                  <div>
+
+
+                  <audio src={episode.audioUrl} controls />
+
+                    
+                  </div>
+                )}
               </li>
             ))}
           </ul>
