@@ -13,10 +13,12 @@ console.log(`[${new Date().toISOString()}] MongoDB URI:`, process.env.MONGODB_UR
 const app = express();
 const parser = new RSSParser();
 
-app.use(cors({
+app.use(
+  cors({
     origin: "http://localhost:5173", // Allow Vite's development server
-    credentials: true
-  }));
+    credentials: true,
+  })
+);
 app.use(express.json());
 
 // ✅ **Connect to MongoDB**
@@ -37,21 +39,32 @@ app.get("/api/podcasts", async (req, res) => {
   try {
     console.log(`[${new Date().toISOString()}] 🔄 Fetching latest podcast episodes...`);
 
-    const feedUrl = "https://feeds.megaphone.fm/GLT1412515089";
+    // Use the user-provided feedUrl or fall back to the default feed
+    const feedUrl = req.query.feedUrl || "https://lexfridman.com/feed/podcast/";
+    console.log(`[${new Date().toISOString()}] 🔗 Using feed URL: ${feedUrl}`);
+
+    // Validate that feedUrl is a proper URL
+    try {
+      new URL(feedUrl);
+    } catch (err) {
+      return res.status(400).json({ error: "Invalid feed URL" });
+    }
+
     const feed = await parser.parseURL(feedUrl);
 
     if (!feed || !feed.items) {
       throw new Error("Invalid feed data");
     }
 
-    
-
+    // Sort items by publication date (newest first)
     const sortedItems = feed.items.sort(
       (a, b) => new Date(b.pubDate) - new Date(a.pubDate)
     );
 
+    // Limit to the latest 20 episodes
     const latestEpisodes = sortedItems.slice(0, 20);
 
+    // Update or insert episodes in the database
     for (const item of latestEpisodes) {
       const uniqueId = item.guid || `${item.link}_${item.pubDate}`;
       const audioUrl = item.enclosure ? item.enclosure.url : null;
@@ -64,14 +77,17 @@ app.get("/api/podcasts", async (req, res) => {
           link: item.link,
           uniqueId,
           audioUrl,
+          feedUrl, // Save the feedUrl for later filtering if needed
         },
         { upsert: true, new: true }
       ).exec();
     }
 
-    // ✅ Fetch episodes with recommendations
-    const episodes = await Episode.find().sort({ pubDate: -1 }).limit(20).lean();
-    
+    // If a custom feed URL was provided, you might want to filter the DB query.
+    // Otherwise, this will return the latest 20 episodes overall.
+    const query = req.query.feedUrl ? { feedUrl } : {};
+    const episodes = await Episode.find(query).sort({ pubDate: -1 }).limit(20).lean();
+
     console.log(`[${new Date().toISOString()}] 📝 Episodes from DB:`, episodes);
 
     res.json(episodes);
@@ -120,7 +136,6 @@ app.get("/api/episode/:id/recommendations", async (req, res) => {
     // ✅ Save recommendations in DB
     await Episode.findByIdAndUpdate(episodeId, { recommendations }, { new: true });
 
-
     res.json({ recommendations });
   } catch (error) {
     console.error(`[${new Date().toISOString()}] ❌ Error extracting recommendations:`, error);
@@ -130,14 +145,14 @@ app.get("/api/episode/:id/recommendations", async (req, res) => {
 
 // ✅ **Extract recommendations using OpenAI**
 async function extractRecommendations(transcription) {
-    const openAiApiKey = process.env.OPENAI_API_KEY;
-    if (!openAiApiKey) {
-      throw new Error("OpenAI API key is missing in .env");
-    }
+  const openAiApiKey = process.env.OPENAI_API_KEY;
+  if (!openAiApiKey) {
+    throw new Error("OpenAI API key is missing in .env");
+  }
 
-    console.log(`[${new Date().toISOString()}] 📌 Extracting recommendations from transcription...`);
+  console.log(`[${new Date().toISOString()}] 📌 Extracting recommendations from transcription...`);
 
-    const prompt = `
+  const prompt = `
     The following sentences were extracted from a podcast transcript. 
     Identify any book or movie titles mentioned and provide a summary.
 
@@ -156,42 +171,42 @@ async function extractRecommendations(transcription) {
     "${transcription}"
     `;
 
-    try {
-        const response = await axios.post(
-            "https://api.openai.com/v1/chat/completions",
-            {
-                model: "gpt-4o-mini",
-                messages: [
-                    { role: "system", content: "You extract book and movie recommendations from podcast transcripts." },
-                    { role: "user", content: prompt }
-                ],
-                max_tokens: 500
-            },
-            {
-                headers: { Authorization: `Bearer ${openAiApiKey}` },
-            }
-        );
+  try {
+    const response = await axios.post(
+      "https://api.openai.com/v1/chat/completions",
+      {
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: "You extract book and movie recommendations from podcast transcripts." },
+          { role: "user", content: prompt },
+        ],
+        max_tokens: 500,
+      },
+      {
+        headers: { Authorization: `Bearer ${openAiApiKey}` },
+      }
+    );
 
-        console.log(`[${new Date().toISOString()}] 🛑 OpenAI Rate Limit Info:`, response.headers);
+    console.log(`[${new Date().toISOString()}] 🛑 OpenAI Rate Limit Info:`, response.headers);
 
-        let content = response.data.choices[0].message.content.trim();
+    let content = response.data.choices[0].message.content.trim();
 
-        // ✅ Fix: Remove Markdown Code Block if present
-        content = content.replace(/^```json\s*/, "").replace(/```$/, "").trim();
+    // ✅ Remove Markdown Code Block if present
+    content = content.replace(/^```json\s*/, "").replace(/```$/, "").trim();
 
-        if (!content.startsWith("{") || !content.endsWith("}")) {
-            console.error(`[${new Date().toISOString()}] ❌ OpenAI response is not valid JSON:`, content);
-            return { summary: "Failed to generate summary.", books: [], movies: [] };
-        }
-
-        const recommendations = JSON.parse(content);
-        console.log(`[${new Date().toISOString()}] ✅ Extracted Recommendations:`, recommendations);
-
-        return recommendations;
-    } catch (error) {
-        console.error(`[${new Date().toISOString()}] ❌ AI Extraction Error:`, error.response?.data || error.message);
-        return { summary: "Failed to generate summary.", books: [], movies: [] };
+    if (!content.startsWith("{") || !content.endsWith("}")) {
+      console.error(`[${new Date().toISOString()}] ❌ OpenAI response is not valid JSON:`, content);
+      return { summary: "Failed to generate summary.", books: [], movies: [] };
     }
+
+    const recommendations = JSON.parse(content);
+    console.log(`[${new Date().toISOString()}] ✅ Extracted Recommendations:`, recommendations);
+
+    return recommendations;
+  } catch (error) {
+    console.error(`[${new Date().toISOString()}] ❌ AI Extraction Error:`, error.response?.data || error.message);
+    return { summary: "Failed to generate summary.", books: [], movies: [] };
+  }
 }
 
 // ✅ **Helper function: Transcribe Audio**
@@ -212,7 +227,6 @@ async function transcribeAudio(audioUrl) {
   const transcriptId = transcriptResponse.data.id;
   console.log(`[${new Date().toISOString()}] 🕒 Waiting for transcription: ${transcriptId}`);
 
-  let transcriptText = null;
   while (true) {
     await new Promise((resolve) => setTimeout(resolve, 5000));
     const pollingResponse = await axios.get(
