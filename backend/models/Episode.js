@@ -38,7 +38,22 @@ const EpisodeSchema = new mongoose.Schema({
         description: String,
       }
     ]
-  }
+  },
+  
+  // Link to the user that scanned this episode
+userId: {
+  type: mongoose.Schema.Types.ObjectId,
+  ref: "User", // References the User model
+  required: true
+},
+scannedAt: {
+  type: Date,
+  default: Date.now, // store when the user scanned the episode
+},
+
 });
+
+// Allow a combination of userId and uniqueId to be unique
+EpisodeSchema,index({ userId: 1, uniqueId: 1}, { unique: true });
 
 export default mongoose.model("Episode", EpisodeSchema);
