@@ -5,6 +5,8 @@ import dotenv from "dotenv";
 import RSSParser from "rss-parser";
 import Episode from "./models/Episode.js";
 import axios from "axios";
+import saveUserRouter from "./api/saveUser.js";
+
 
 dotenv.config();
 
@@ -20,6 +22,8 @@ app.use(
   })
 );
 app.use(express.json());
+
+app.use("/api", saveUserRouter);  // Mount the route with /api prefix
 
 // ✅ **Connect to MongoDB**
 mongoose

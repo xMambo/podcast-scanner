@@ -5,6 +5,10 @@ const EpisodeSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
+  image: {
+    type: String,
+    required: true,
+  },
   pubDate: {
     type: Date,
     required: true,
@@ -53,7 +57,6 @@ scannedAt: {
 
 });
 
-// Allow a combination of userId and uniqueId to be unique
-EpisodeSchema,index({ userId: 1, uniqueId: 1}, { unique: true });
+
 
 export default mongoose.model("Episode", EpisodeSchema);
