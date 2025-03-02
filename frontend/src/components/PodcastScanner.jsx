@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import {
   Container,
-  Button, // From react-bootstrap
+  Button,
   Row,
   Col,
   ListGroup,
@@ -10,6 +10,8 @@ import {
   Image,
   Collapse,
   Alert,
+  Form,
+  Pagination,
 } from "react-bootstrap";
 import { UserButton, useUser, useAuth } from "@clerk/clerk-react";
 import PodcastSearch from "./PodcastSearch";
@@ -18,7 +20,8 @@ import "./PodcastScanner.css"; // CSS for custom play button
 const API_BASE_URL = "https://podcast-scanner.onrender.com";
 
 function PodcastScanner() {
-  const [episodes, setEpisodes] = useState([]);
+  const [episodes, setEpisodes] = useState([]); // All fetched episodes
+  const [filteredEpisodes, setFilteredEpisodes] = useState([]); // Filtered episodes for display
   const [selectedPodcast, setSelectedPodcast] = useState(null);
   const [rssFeedUrl, setRssFeedUrl] = useState("");
   const [recentFeeds, setRecentFeeds] = useState([]);
@@ -29,6 +32,11 @@ function PodcastScanner() {
   const [error, setError] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [playingAudio, setPlayingAudio] = useState(null); // State for current playing audio
+  const [currentPage, setCurrentPage] = useState(1); // For pagination
+  const [searchGuest, setSearchGuest] = useState(""); // For guest search
+  const [searchTitle, setSearchTitle] = useState(""); // For episode title search
+
+  const EPISODES_PER_PAGE = 20;
 
   const { user } = useUser();
   const { getToken } = useAuth();
@@ -92,6 +100,8 @@ function PodcastScanner() {
     setSelectedPodcast(podcast);
     if (podcast.feedUrl) {
       setRssFeedUrl(podcast.feedUrl);
+      setSearchGuest(""); // Reset guest search
+      setSearchTitle(""); // Reset title search
       fetchEpisodes(podcast.feedUrl);
       setRecentFeeds((prev) => {
         const newFeed = {
@@ -108,67 +118,32 @@ function PodcastScanner() {
     }
   };
 
-  const fetchEpisodes = async (feedUrl) => {
-    const url = `${API_BASE_URL}/api/podcasts`;
-    console.log("Fetching episodes from RSS feed:", url);
+  const fetchEpisodes = async (feedUrl, guest = "") => {
+    const url = guest ? `${API_BASE_URL}/api/podcasts/search?feedUrl=${encodeURIComponent(feedUrl)}&guest=${encodeURIComponent(guest)}` : `${API_BASE_URL}/api/podcasts?feedUrl=${encodeURIComponent(feedUrl)}`;
+    console.log(`Fetching episodes from ${url}`);
     setIsLoading(true);
     setError(null);
-    setEpisodes([]);
 
     try {
       const token = await getToken();
       console.log("Fetching episodes with token:", token);
-      const rssResponse = await fetch(url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`,
-        },
-        body: JSON.stringify({ feedUrl }),
-      });
-
-      if (!rssResponse.ok) {
-        const errData = await rssResponse.json();
-        throw new Error(errData.error || `HTTP error! Status: ${rssResponse.status}`);
-      }
-
-      const rssData = await rssResponse.json();
-      console.log("Received data from RSS feed:", rssData);
-      setEpisodes(rssData);
-
-      const mongoResponse = await fetch(`${url}?feedUrl=${encodeURIComponent(feedUrl)}`, {
+      const response = await fetch(url, {
         headers: {
           "Authorization": `Bearer ${token}`,
         },
       });
 
-      if (!mongoResponse.ok) {
-        console.warn("MongoDB fetch failed, using RSS data only");
-        return;
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.error || `HTTP error! Status: ${response.status}`);
       }
 
-      const mongoData = await mongoResponse.json();
-      console.log("Received MongoDB data:", mongoData);
-
-      const mergedEpisodes = rssData.map((rssEpisode) => {
-        const mongoEpisode = mongoData.find((m) => m.uniqueId === rssEpisode.uniqueId);
-        return {
-          ...rssEpisode,
-          recommendations: mongoEpisode?.recommendations || { summary: "", books: [], media: [] }, // Updated to use media instead of movies
-        };
-      });
-
-      setEpisodes(mergedEpisodes);
-      const storedRecommendations = {};
-      mergedEpisodes.forEach((episode) => {
-        const episodeId = episode._id || episode.uniqueId;
-        if (episode.recommendations?.summary && episodeId) {
-          storedRecommendations[episodeId] = episode.recommendations;
-        }
-      });
-      setRecommendations((prev) => ({ ...prev, ...storedRecommendations }));
+      const data = await response.json();
+      console.log("Received data from API:", data);
+      setEpisodes(data);
+      setFilteredEpisodes(data); // Set filtered episodes to all episodes initially
     } catch (err) {
-      console.error("❌ Error fetching episodes from RSS feed:", err);
+      console.error("❌ Error fetching episodes from API:", err);
       setError(err.message);
     } finally {
       setIsLoading(false);
@@ -177,16 +152,34 @@ function PodcastScanner() {
 
   const handleRecentFeedClick = (feedUrl) => {
     setRssFeedUrl(feedUrl);
+    setSearchGuest(""); // Reset guest search
+    setSearchTitle(""); // Reset title search
     fetchEpisodes(feedUrl);
-    const selectedFeed = recentFeeds.find((feed) => feed.feedUrl === feedUrl);
-    if (selectedFeed) {
-      setSelectedPodcast({
-        feedUrl: selectedFeed.feedUrl,
-        collectionName: selectedFeed.collectionName,
-        artistName: selectedFeed.artistName,
-        artworkUrl600: selectedFeed.artworkUrl600,
-      });
+  };
+
+  const handleGuestSearch = (e) => {
+    e.preventDefault();
+    if (rssFeedUrl && searchGuest.trim()) {
+      fetchEpisodes(rssFeedUrl, searchGuest.trim());
     }
+  };
+
+  // Handle episode title search with debugging
+  const handleTitleSearch = (e) => {
+    const value = e.target.value;
+    console.log("Title search value:", value); // Debug log
+    setSearchTitle(value);
+    if (value.trim()) {
+      const filtered = episodes.filter(episode =>
+        episode.title.toLowerCase().includes(value.toLowerCase())
+      );
+      console.log("Filtered episodes by title:", filtered); // Debug log
+      setFilteredEpisodes(filtered);
+    } else {
+      console.log("Resetting filtered episodes to all episodes"); // Debug log
+      setFilteredEpisodes(episodes); // Show all episodes if search is empty
+    }
+    setCurrentPage(1); // Reset to first page on new search
   };
 
   const handleGetRecs = async (episode) => {
@@ -201,7 +194,7 @@ function PodcastScanner() {
 
     if (
       recommendations[episodeId]?.summary &&
-      (recommendations[episodeId]?.books?.length > 0 || recommendations[episodeId]?.media?.length > 0) // Updated to use media instead of movies
+      (recommendations[episodeId]?.books?.length > 0 || recommendations[episodeId]?.media?.length > 0)
     ) {
       setProgressStatus("Complete");
       return;
@@ -230,8 +223,8 @@ function PodcastScanner() {
       console.log(`📢 Fetched recommendations for episode ID: ${episodeId}`, data);
 
       if (data.recommendations) {
-        const { summary, books, media } = data.recommendations; // Updated to use media instead of movies
-        if (!summary && books.length === 0 && media.length === 0) { // Updated to use media instead of movies
+        const { summary, books, media } = data.recommendations;
+        if (!summary && books.length === 0 && media.length === 0) {
           console.warn("⚠️ Recommendations are empty.");
           setProgressStatus("No recommendations available.");
         } else {
@@ -260,13 +253,54 @@ function PodcastScanner() {
     setPlayingAudio(audioUrl === playingAudio ? null : audioUrl); // Toggle playback
   };
 
+  // Pagination logic
+  const indexOfLastEpisode = currentPage * EPISODES_PER_PAGE;
+  const indexOfFirstEpisode = indexOfLastEpisode - EPISODES_PER_PAGE;
+  const currentEpisodes = filteredEpisodes.slice(indexOfFirstEpisode, indexOfLastEpisode);
+  const totalPages = Math.ceil(filteredEpisodes.length / EPISODES_PER_PAGE);
+
+  const handlePageChange = (pageNumber) => {
+    console.log("Changing page to:", pageNumber); // Debug log
+    setCurrentPage(pageNumber);
+  };
+
   return (
     <Container className="py-5">
-      <div className="text-right mb-3">
+      <div className="text-left mb-3">
         <UserButton />
       </div>
       <h1 className="text-center mb-4">Podcast Scanner</h1>
       <PodcastSearch onPodcastSelect={handlePodcastSelect} />
+
+      <Form className="mb-3">
+        <Row>
+          <Col md={6}>
+            <Form.Group controlId="guestSearch">
+              <Form.Control
+                type="text"
+                placeholder="Search by guest name..."
+                value={searchGuest}
+                onChange={(e) => setSearchGuest(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && handleGuestSearch(e)}
+              />
+            </Form.Group>
+          </Col>
+          <Col md={6}>
+            <Form.Group controlId="titleSearch">
+              <Form.Control
+                type="text"
+                placeholder="Search episode titles..."
+                value={searchTitle}
+                onChange={handleTitleSearch}
+                onKeyPress={(e) => e.key === 'Enter' && handleTitleSearch({ target: { value: searchTitle } })}
+              />
+            </Form.Group>
+          </Col>
+        </Row>
+        <Button onClick={handleGuestSearch} variant="primary" className="mt-2">
+          Search Guest
+        </Button>
+      </Form>
 
       {recentFeeds.length > 0 && (
         <div className="my-3">
@@ -310,11 +344,11 @@ function PodcastScanner() {
 
       <h2 className="mt-5">Latest Episodes</h2>
       {isLoading && <Spinner animation="border" className="d-block mx-auto" />}
-      {!isLoading && episodes.length === 0 && !error && (
-        <p>Select a podcast to see episodes.</p>
+      {!isLoading && filteredEpisodes.length === 0 && !error && (
+        <p>Select a podcast or search for a guest/title to see episodes.</p>
       )}
       <ListGroup className="mb-4">
-        {episodes.map((episode, index) => {
+        {currentEpisodes.map((episode, index) => {
           const episodeId = episode._id || episode.uniqueId;
           const isExpanded = expandedEpisodes[episodeId];
           const isLoadingRec = loadingRecs[episodeId];
@@ -355,7 +389,7 @@ function PodcastScanner() {
                   )}
                   {(recommendations[episodeId]?.summary ||
                     recommendations[episodeId]?.books?.length > 0 ||
-                    recommendations[episodeId]?.media?.length > 0) && ( // Updated to use media instead of movies
+                    recommendations[episodeId]?.media?.length > 0) && (
                     <Card className="mt-2">
                       <Card.Body>
                         {recommendations[episodeId]?.summary && (
@@ -375,7 +409,7 @@ function PodcastScanner() {
                             </ul>
                           </>
                         )}
-                        {recommendations[episodeId]?.media?.length > 0 && ( // Updated to use media instead of movies
+                        {recommendations[episodeId]?.media?.length > 0 && (
                           <>
                             <h6>Movies, Films, Documentaries, & TV Shows:</h6>
                             <ul>
@@ -412,6 +446,29 @@ function PodcastScanner() {
           );
         })}
       </ListGroup>
+
+      {/* Pagination */}
+      {filteredEpisodes.length > EPISODES_PER_PAGE && (
+        <Pagination className="justify-content-center">
+          <Pagination.Prev
+            onClick={() => handlePageChange(currentPage - 1)}
+            disabled={currentPage === 1}
+          />
+          {Array.from({ length: totalPages }, (_, index) => (
+            <Pagination.Item
+              key={index + 1}
+              active={index + 1 === currentPage}
+              onClick={() => handlePageChange(index + 1)}
+            >
+              {index + 1}
+            </Pagination.Item>
+          ))}
+          <Pagination.Next
+            onClick={() => handlePageChange(currentPage + 1)}
+            disabled={currentPage === totalPages}
+          />
+        </Pagination>
+      )}
     </Container>
   );
 }
