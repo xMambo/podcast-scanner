@@ -179,11 +179,13 @@ app.get("/api/episode/:id/recommendations", async (req, res) => {
       }
 
       user.recsUsage.count += 1;
-      await user.save().catch(err => {
-        console.error("❌ Failed to save user recsUsage:", err.stack);
-        throw new Error("Failed to update usage count");
-      });
-      console.log(`Updated recsUsage for ${clerkId}: ${user.recsUsage.count}`);
+      try {
+        await user.save();
+        console.log(`Updated recsUsage for ${clerkId}: ${user.recsUsage.count}`);
+      } catch (saveErr) {
+        console.error("❌ Failed to save user recsUsage:", saveErr.stack);
+        return res.status(500).json({ error: "Failed to update usage count", details: saveErr.message });
+      }
     } else {
       console.log(`Skipping rate limit for owner clerkId: ${clerkId}`);
     }
