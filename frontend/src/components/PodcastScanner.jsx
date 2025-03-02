@@ -162,7 +162,7 @@ function PodcastScanner() {
     }
   };
 
-  // Handle keywords search (title and summary) for entire RSS feed
+  // Handle keywords search (title and summary) for entire RSS feed with enhanced matching
   const handleKeywordsSearch = (e) => {
     const value = e.target.value;
     console.log("Keywords search value (entire list):", value);
@@ -170,21 +170,24 @@ function PodcastScanner() {
     filterEpisodes(); // Filter all episodes, not just current page
   };
 
-  // Filter episodes based on keywords search (entire RSS feed)
+  // Filter episodes based on keywords search (entire RSS feed) with enhanced matching
   const filterEpisodes = () => {
     let filtered = [...episodes]; // Start with all episodes (full RSS feed), not filteredEpisodes
 
     if (searchKeywords.trim()) {
-      const lowerCaseKeywords = searchKeywords.toLowerCase();
+      const lowerCaseKeywords = searchKeywords.toLowerCase().split(/\s+/).filter(Boolean); // Split by whitespace, remove empty
       filtered = filtered.filter(episode => {
-        return (
-          episode.title.toLowerCase().includes(lowerCaseKeywords) ||
-          (episode.recommendations?.summary?.toLowerCase()?.includes(lowerCaseKeywords) || false)
+        const title = episode.title?.toLowerCase() || "";
+        const summary = episode.recommendations?.summary?.toLowerCase() || "";
+
+        // Check if any keyword matches title or summary
+        return lowerCaseKeywords.some(keyword =>
+          title.includes(keyword) || summary.includes(keyword)
         );
       });
     }
 
-    console.log("Filtered episodes (entire list):", filtered);
+    console.log("Filtered episodes (entire list):", filtered.map(ep => ep.title)); // Log titles for debugging
     setFilteredEpisodes(filtered); // Update filteredEpisodes with all matching episodes
     setCurrentPage(1); // Reset to first page on new search
   };
