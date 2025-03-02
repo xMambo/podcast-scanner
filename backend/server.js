@@ -144,7 +144,7 @@ app.get("/api/episode/:id/recommendations", async (req, res) => {
   console.log("GET /api/episode/:id/recommendations - Request headers:", req.headers);
   const { id } = req.params;
   const clerkId = req.auth?.userId;
-  const ownerClerkId = "your_clerk_id_here"; // Replace with your Clerk user ID
+  const ownerClerkId = "user_2tjQfte8BQov14RMeDEQVsLuxC8"; // Your Clerk user ID
 
   if (!clerkId) {
     console.log("No clerkId found in request");
@@ -160,15 +160,23 @@ app.get("/api/episode/:id/recommendations", async (req, res) => {
     }
 
     if (clerkId !== ownerClerkId) {
+      // Check and create/update user atomically
       let user = await User.findOne({ clerkId });
       if (!user) {
         console.log(`Creating new user for clerkId: ${clerkId}`);
-        user = new User({
-          clerkId,
-          fullName: "Guest",
-          email: `${clerkId}@guest.com`,
-          recsUsage: { date: new Date(), count: 0 },
-        });
+        user = await User.findOneAndUpdate(
+          { clerkId },
+          {
+            $setOnInsert: {
+              clerkId,
+              fullName: "Guest",
+              email: `${clerkId}@guest.com`,
+              recsUsage: { date: new Date(), count: 0 },
+              recentFeeds: [],
+            },
+          },
+          { upsert: true, new: true }
+        );
       }
 
       resetDailyCountIfNeeded(user);
@@ -178,14 +186,20 @@ app.get("/api/episode/:id/recommendations", async (req, res) => {
         return res.status(429).json({ error: "Daily 'Get Recs' limit of 5 reached" });
       }
 
-      user.recsUsage.count += 1;
-      try {
-        await user.save();
-        console.log(`Updated recsUsage for ${clerkId}: ${user.recsUsage.count}`);
-      } catch (saveErr) {
-        console.error("❌ Failed to save user recsUsage:", saveErr.stack);
-        return res.status(500).json({ error: "Failed to update usage count", details: saveErr.message });
+      // Increment usage count atomically
+      const updatedUser = await User.findOneAndUpdate(
+        { clerkId },
+        {
+          $inc: { "recsUsage.count": 1 },
+          $set: { "recsUsage.date": user.recsUsage.date }, // Ensure date persists
+        },
+        { new: true }
+      );
+      if (!updatedUser) {
+        console.error(`❌ Failed to increment recsUsage for clerkId: ${clerkId}`);
+        return res.status(500).json({ error: "Failed to update usage count" });
       }
+      console.log(`Updated recsUsage for ${clerkId}: ${updatedUser.recsUsage.count}`);
     } else {
       console.log(`Skipping rate limit for owner clerkId: ${clerkId}`);
     }
