@@ -14,6 +14,9 @@ import {
 import { UserButton, useUser, useAuth } from "@clerk/clerk-react";
 import PodcastSearch from "./PodcastSearch";
 
+// Optionally, install react-audio-player for a better UI (npm install react-audio-player)
+import ReactAudioPlayer from "react-audio-player"; // If you choose to use this
+
 const API_BASE_URL = "https://podcast-scanner.onrender.com";
 
 function PodcastScanner() {
@@ -27,6 +30,7 @@ function PodcastScanner() {
   const [expandedEpisodes, setExpandedEpisodes] = useState({});
   const [error, setError] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [playingAudio, setPlayingAudio] = useState(null); // State for current playing audio
 
   const { user } = useUser();
   const { getToken } = useAuth();
@@ -37,74 +41,7 @@ function PodcastScanner() {
     }
   }, [user]);
 
-  const fetchRecentFeeds = async () => {
-    try {
-      const token = await getToken();
-      console.log("Fetching recent feeds with token:", token);
-      const response = await fetch(`${API_BASE_URL}/api/user/recent-feeds`, {
-        headers: {
-          "Authorization": `Bearer ${token}`,
-        },
-      });
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(`Failed to fetch recent feeds: ${errorData.error || response.statusText}`);
-      }
-      const feeds = await response.json();
-      console.log("Fetched recent feeds:", feeds);
-      setRecentFeeds(feeds);
-    } catch (err) {
-      console.error("❌ Error fetching recent feeds:", err);
-      setError(err.message);
-    }
-  };
-
-  const saveRecentFeeds = async (updatedFeeds) => {
-    try {
-      const token = await getToken();
-      console.log("Saving recent feeds with token:", token);
-      console.log("Saving recent feeds data:", updatedFeeds);
-      const response = await fetch(`${API_BASE_URL}/api/user/recent-feeds`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`,
-        },
-        body: JSON.stringify({ recentFeeds: updatedFeeds }),
-      });
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(`Failed to save recent feeds: ${errorData.error || response.statusText}`);
-      }
-      const savedFeeds = await response.json();
-      console.log("Saved recent feeds:", savedFeeds);
-      setRecentFeeds(savedFeeds);
-    } catch (err) {
-      console.error("❌ Error saving recent feeds:", err);
-      setError(err.message);
-    }
-  };
-
-  const handlePodcastSelect = (podcast) => {
-    console.log("Podcast object from search:", podcast);
-    setSelectedPodcast(podcast);
-    if (podcast.feedUrl) {
-      setRssFeedUrl(podcast.feedUrl);
-      fetchEpisodes(podcast.feedUrl);
-      setRecentFeeds((prev) => {
-        const newFeed = {
-          feedUrl: podcast.feedUrl,
-          artworkUrl: podcast.artworkUrl100 || podcast.artworkUrl600 || podcast.artwork || "https://via.placeholder.com/60",
-          artworkUrl600: podcast.artworkUrl600 || podcast.artwork || "https://via.placeholder.com/250",
-          collectionName: podcast.collectionName,
-          artistName: podcast.artistName,
-        };
-        const updatedFeeds = [newFeed, ...prev.filter((item) => item.feedUrl !== podcast.feedUrl)].slice(0, 5);
-        saveRecentFeeds(updatedFeeds);
-        return updatedFeeds;
-      });
-    }
-  };
+  // ... (keep fetchRecentFeeds, saveRecentFeeds, handlePodcastSelect as is)
 
   const fetchEpisodes = async (feedUrl) => {
     const url = `${API_BASE_URL}/api/podcasts`;
@@ -174,84 +111,25 @@ function PodcastScanner() {
     }
   };
 
-  const handleRecentFeedClick = (feedUrl) => {
-    setRssFeedUrl(feedUrl);
-    fetchEpisodes(feedUrl);
-    const selectedFeed = recentFeeds.find((feed) => feed.feedUrl === feedUrl);
-    if (selectedFeed) {
-      setSelectedPodcast({
-        feedUrl: selectedFeed.feedUrl,
-        collectionName: selectedFeed.collectionName,
-        artistName: selectedFeed.artistName,
-        artworkUrl600: selectedFeed.artworkUrl600,
-      });
-    }
-  };
+  // ... (keep handleRecentFeedClick, other functions as is)
 
   const handleGetRecs = async (episode) => {
-    const episodeId = episode._id || episode.uniqueId;
-    if (!episode || !episodeId) {
-      console.error("❌ Invalid episode or missing _id/uniqueId:", episode);
-      setProgressStatus("Invalid episode data.");
+    // ... (keep as is)
+  };
+
+  // New function to handle audio playback
+  const handlePlayAudio = (episode) => {
+    const audioUrl = episode.audioUrl;
+    if (!audioUrl) {
+      setError("No audio URL available for this episode.");
       return;
     }
-
-    setExpandedEpisodes((prev) => ({ ...prev, [episodeId]: !prev[episodeId] }));
-
-    if (
-      recommendations[episodeId]?.summary &&
-      (recommendations[episodeId]?.books?.length > 0 || recommendations[episodeId]?.movies?.length > 0)
-    ) {
-      setProgressStatus("Complete");
-      return;
-    }
-
-    setLoadingRecs((prev) => ({ ...prev, [episodeId]: true }));
-    setProgressStatus("Queued");
-
-    try {
-      const token = await getToken();
-      const response = await fetch(
-        `${API_BASE_URL}/api/episode/${episodeId}/recommendations`,
-        {
-          headers: {
-            "Authorization": `Bearer ${token}`,
-          },
-        }
-      );
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `HTTP error! Status: ${response.status}`);
-      }
-
-      const data = await response.json();
-      console.log(`📢 Fetched recommendations for episode ID: ${episodeId}`, data);
-
-      if (data.recommendations) {
-        const { summary, books, movies } = data.recommendations;
-        if (!summary && books.length === 0 && movies.length === 0) {
-          console.warn("⚠️ Recommendations are empty.");
-          setProgressStatus("No recommendations available.");
-        } else {
-          setRecommendations((prev) => ({ ...prev, [episodeId]: data.recommendations }));
-          setProgressStatus("Complete");
-        }
-      } else {
-        console.warn("⚠️ No recommendations found in response.");
-        setProgressStatus("No recommendations available.");
-      }
-    } catch (error) {
-      console.error("❌ Error fetching recommendations:", error);
-      setProgressStatus(error.message);
-    } finally {
-      setLoadingRecs((prev) => ({ ...prev, [episodeId]: false }));
-    }
+    setPlayingAudio(audioUrl === playingAudio ? null : audioUrl); // Toggle playback
   };
 
   return (
     <Container className="py-5">
-      <p>DEBUG: PodcastScanner is rendering</p> {/* Temporary debug */}
+      {/* Remove DEBUG text if still present */}
       <div className="text-right mb-3">
         <UserButton />
       </div>
@@ -322,6 +200,14 @@ function PodcastScanner() {
                   <Button
                     variant="primary"
                     size="sm"
+                    onClick={() => handlePlayAudio(episode)}
+                    className="me-2"
+                  >
+                    {playingAudio === episode.audioUrl ? "Pause" : "Play"}
+                  </Button>
+                  <Button
+                    variant="primary"
+                    size="sm"
                     onClick={() => handleGetRecs(episode)}
                   >
                     {isExpanded ? "Hide Recs" : "Get Recs"}
@@ -373,6 +259,31 @@ function PodcastScanner() {
                   )}
                 </div>
               </Collapse>
+
+              {/* Audio Player (Simple HTML Audio or ReactAudioPlayer) */}
+              {playingAudio === episode.audioUrl && (
+                // Option 1: Simple HTML Audio (No library needed)
+                <audio
+                  controls
+                  src={playingAudio}
+                  autoPlay
+                  onEnded={() => setPlayingAudio(null)}
+                  style={{ width: "100%", marginTop: "10px" }}
+                  onError={(e) => setError("Failed to load audio. Check the audio URL.")}
+                >
+                  Your browser does not support the audio element.
+                </audio>
+                // Option 2: Using react-audio-player (if installed)
+                /*
+                <ReactAudioPlayer
+                  src={playingAudio}
+                  autoPlay
+                  controls
+                  onEnded={() => setPlayingAudio(null)}
+                  onError={(e) => setError("Failed to load audio. Check the audio URL.")}
+                />
+                */
+              )}
             </ListGroup.Item>
           );
         })}
