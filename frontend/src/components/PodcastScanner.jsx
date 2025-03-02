@@ -96,9 +96,9 @@ function PodcastScanner() {
 
   const handlePodcastSelect = (podcast) => {
     console.log("Podcast object from search:", podcast);
-    setSelectedPodcast(podcast); // Ensure selectedPodcast is set to prevent disappearance
+    setSelectedPodcast(podcast); // Set selectedPodcast explicitly
     if (podcast.feedUrl) {
-      setRssFeedUrl(podcast.feedUrl);
+      setRssFeedUrl(podcast.feedUrl); // Update rssFeedUrl to match the selected podcast
       setSearchKeywords(""); // Reset keywords search
       fetchEpisodes(podcast.feedUrl);
       setRecentFeeds((prev) => {
@@ -149,9 +149,17 @@ function PodcastScanner() {
   };
 
   const handleRecentFeedClick = (feedUrl) => {
-    setRssFeedUrl(feedUrl);
-    setSearchKeywords(""); // Reset keywords search
-    fetchEpisodes(feedUrl);
+    console.log("Recent feed clicked, feedUrl:", feedUrl);
+    const selectedFeed = recentFeeds.find((feed) => feed.feedUrl === feedUrl);
+    if (selectedFeed) {
+      setSelectedPodcast(selectedFeed); // Set selectedPodcast from recent feed data
+      setRssFeedUrl(feedUrl); // Update rssFeedUrl to match the selected recent feed
+      setSearchKeywords(""); // Reset keywords search
+      fetchEpisodes(feedUrl);
+    } else {
+      console.warn("❌ No matching feed found for feedUrl:", feedUrl);
+      setError("Failed to load recent feed. Please try again.");
+    }
   };
 
   // Handle keywords search (title and summary)
@@ -231,7 +239,7 @@ function PodcastScanner() {
           setProgressStatus("Complete");
         }
       } else {
-        console.warn("⚠️ No recommendations found in response.");
+        console.warn("❌ No recommendations found in response.");
         setProgressStatus("No recommendations available.");
       }
     } catch (error) {
