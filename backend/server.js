@@ -25,6 +25,8 @@ app.use(ClerkExpressWithAuth({
   publishableKey: process.env.CLERK_PUBLISHABLE_KEY, // Added
 }));
 
+app.use(cors({ origin: ["http://localhost:5173", "https://podcast-scanner.vercel.app/"], credentials: true }));
+
 app.use("/api", saveUserRouter);
 
 mongoose.set("strictQuery", true);
