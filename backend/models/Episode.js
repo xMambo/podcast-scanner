@@ -1,33 +1,17 @@
-// models/Episode.js
 import mongoose from "mongoose";
 
-const EpisodeSchema = new mongoose.Schema({
-  title: { type: String, required: true },
-  pubDate: { type: Date, required: true },
-  link: { type: String, required: true },
-  uniqueId: { type: String, required: true, unique: true, index: true },
-  audioUrl: { type: String, default: "" },
-  feedUrl: { type: String, required: true, index: true },
-  transcription: { type: String },
+const episodeSchema = new mongoose.Schema({
+  title: String,
+  pubDate: Date,
+  link: String,
+  uniqueId: { type: String, unique: true },
+  audioUrl: String,
+  feedUrl: String,
   recommendations: {
-    summary: { type: String, default: "" },
-    books: [{ title: { type: String }, description: { type: String } }],
-    movies: [{ title: { type: String }, description: { type: String } }],
+    summary: String,
+    books: [{ title: String, description: String }],
+    movies: [{ title: String, description: String }],
   },
-  image: { type: String, default: "" },
-  userId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
-  scannedAt: { type: Date, default: Date.now },
-  duration: { type: Number, default: 0 },
-  transcriptionStatus: { 
-    type: String, 
-    enum: ["pending", "completed", "failed"], 
-    default: "pending" 
-  },
-  recommendationStatus: { 
-    type: String, 
-    enum: ["pending", "completed", "failed"], 
-    default: "pending" 
-  },
-});
+}, { timestamps: true });
 
-export default mongoose.model("Episode", EpisodeSchema);
+export default mongoose.model("Episode", episodeSchema);

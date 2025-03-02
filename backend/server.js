@@ -125,7 +125,7 @@ const resetDailyCountIfNeeded = (user) => {
   return user;
 };
 
-// Fetch and generate recommendations with rate limiting
+// Fetch and generate recommendations with rate limiting (no transcription storage)
 app.get("/api/episode/:id/recommendations", async (req, res) => {
   console.log("GET /api/episode/:id/recommendations - Request headers:", req.headers);
   const { id } = req.params;
@@ -190,47 +190,36 @@ app.get("/api/episode/:id/recommendations", async (req, res) => {
       console.log(`Skipping rate limit for owner clerkId: ${clerkId}`);
     }
 
-    const hasCompleteRecommendations =
-      episode.recommendations &&
-      episode.recommendations.summary &&
-      !episode.recommendations.summary.includes("explores related topics") &&
-      (episode.recommendations.books.length > 0 || episode.recommendations.movies.length > 0);
-
-    if (!hasCompleteRecommendations) {
-      console.log(`⚙️ Generating new recommendations for episode: ${episode.title}`);
-      if (!episode.audioUrl) {
-        console.warn(`⚠️ No audio URL for episode: ${episode.title}`);
-        return res.status(400).json({ error: "No audio URL available" });
-      }
-
-      const transcription = await transcribeAudio(episode.audioUrl);
-      const newRecommendations = await extractRecommendations(transcription, episode.title);
-
-      await Episode.updateOne(
-        { $or: [{ _id: id }, { uniqueId: id }] },
-        { $set: { transcription, recommendations: newRecommendations } }
-      );
-      episode.transcription = transcription;
-      episode.recommendations = newRecommendations;
-      console.log(`✅ Saved new recommendations and transcription for: ${episode.title}`);
-    } else {
-      console.log(`✅ Using existing complete recommendations for: ${episode.title}`);
+    // Generate recommendations without saving transcription
+    console.log(`⚙️ Generating new recommendations for episode: ${episode.title}`);
+    if (!episode.audioUrl) {
+      console.warn(`⚠️ No audio URL for episode: ${episode.title}`);
+      return res.status(400).json({ error: "No audio URL available" });
     }
 
-    res.json({ recommendations: episode.recommendations });
+    const transcription = await transcribeAudio(episode.audioUrl);
+    const newRecommendations = await extractRecommendations(transcription, episode.title);
+
+    await Episode.updateOne(
+      { $or: [{ _id: id }, { uniqueId: id }] },
+      { $set: { recommendations: newRecommendations } } // Only save recommendations, not transcription
+    );
+    console.log(`✅ Saved recommendations for: ${episode.title}`);
+
+    res.json({ recommendations: newRecommendations });
   } catch (error) {
     console.error("❌ Error in /api/episode/:id/recommendations:", error.stack);
     res.status(500).json({ error: error.message || "Server error" });
   }
 });
 
-// Fetch episodes from MongoDB
+// Fetch episodes from MongoDB (remove transcription from response)
 app.get("/api/podcasts", async (req, res) => {
   console.log("GET /api/podcasts - Request query:", req.query);
   const { feedUrl } = req.query;
   try {
     const episodes = await Episode.find({ feedUrl })
-      .select("title pubDate link uniqueId image audioUrl transcription recommendations")
+      .select("title pubDate link uniqueId image audioUrl recommendations") // Remove transcription
       .sort({ pubDate: -1 })
       .limit(50);
 
@@ -247,7 +236,7 @@ app.get("/api/podcasts", async (req, res) => {
   }
 });
 
-// Save new episodes from RSS feed
+// Save new episodes from RSS feed (remove transcription field)
 app.post("/api/podcasts", async (req, res) => {
   console.log("POST /api/podcasts - Request body:", req.body);
   const { feedUrl } = req.body;
@@ -273,12 +262,11 @@ app.post("/api/podcasts", async (req, res) => {
             title: item.title || "Untitled Episode",
             pubDate: new Date(item.pubDate),
             link,
-            audioUrl: item.enclosure?.url || "", // Ensure audio URL is captured
+            audioUrl: item.enclosure?.url || "",
             feedUrl,
           },
           $setOnInsert: {
-            transcription: "",
-            recommendations: { summary: "", books: [], movies: [] },
+            recommendations: { summary: "", books: [], movies: [] }, // No transcription
           },
         },
         {
@@ -298,7 +286,7 @@ app.post("/api/podcasts", async (req, res) => {
   }
 });
 
-// Get user's recent feeds
+// Get user's recent feeds (unchanged)
 app.get("/api/user/recent-feeds", async (req, res) => {
   console.log("GET /api/user/recent-feeds - Request headers:", req.headers);
   const clerkId = req.auth?.userId;
@@ -322,7 +310,7 @@ app.get("/api/user/recent-feeds", async (req, res) => {
   }
 });
 
-// Save user's recent feeds
+// Save user's recent feeds (unchanged)
 app.post("/api/user/recent-feeds", async (req, res) => {
   console.log("POST /api/user/recent-feeds - Request headers:", req.headers, "Body:", req.body);
   const clerkId = req.auth?.userId;
