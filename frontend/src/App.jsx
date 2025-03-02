@@ -1,7 +1,7 @@
 // src/App.jsx
 import React from "react";
-import { SignedIn, SignedOut, SignIn, RedirectToSignIn } from "@clerk/clerk-react";
-import { BrowserRouter, Route, Routes, Navigate } from "react-router-dom"; // Added Navigate
+import { SignedIn, SignedOut, SignIn, Navigate } from "@clerk/clerk-react";
+import { BrowserRouter, Route, Routes } from "react-router-dom";
 import PodcastScanner from "./components/PodcastScanner";
 
 const App = () => {
@@ -56,15 +56,7 @@ const App = () => {
             </>
           }
         />
-        {/* Catch unmatched routes */}
-        <Route
-          path="*"
-          element={
-            <SignedOut>
-              <Navigate to="/sign-in" replace />
-            </SignedOut>
-          }
-        />
+        <Route path="*" element={<SignedOut><Navigate to="/sign-in" replace /></SignedOut>} />
       </Routes>
     </BrowserRouter>
   );
