@@ -1,4 +1,3 @@
-// src/components/PodcastScanner.jsx
 import { useState, useEffect } from "react";
 import {
   Container,
@@ -16,7 +15,6 @@ import { UserButton, useUser, useAuth } from "@clerk/clerk-react";
 import PodcastSearch from "./PodcastSearch";
 
 const API_BASE_URL = "https://podcast-scanner.onrender.com";
-// const API_BASE_URL = "http://localhost:5000";
 
 function PodcastScanner() {
   const [episodes, setEpisodes] = useState([]);
@@ -42,7 +40,7 @@ function PodcastScanner() {
   const fetchRecentFeeds = async () => {
     try {
       const token = await getToken();
-      console.log("Fetching recent feeds with token:", token); // Debug token
+      console.log("Fetching recent feeds with token:", token);
       const response = await fetch(`${API_BASE_URL}/api/user/recent-feeds`, {
         headers: {
           "Authorization": `Bearer ${token}`,
@@ -53,7 +51,7 @@ function PodcastScanner() {
         throw new Error(`Failed to fetch recent feeds: ${errorData.error || response.statusText}`);
       }
       const feeds = await response.json();
-      console.log("Fetched recent feeds:", feeds); // Debug response
+      console.log("Fetched recent feeds:", feeds);
       setRecentFeeds(feeds);
     } catch (err) {
       console.error("❌ Error fetching recent feeds:", err);
@@ -64,8 +62,8 @@ function PodcastScanner() {
   const saveRecentFeeds = async (updatedFeeds) => {
     try {
       const token = await getToken();
-      console.log("Saving recent feeds with token:", token); // Debug token
-      console.log("Saving recent feeds data:", updatedFeeds); // Debug payload
+      console.log("Saving recent feeds with token:", token);
+      console.log("Saving recent feeds data:", updatedFeeds);
       const response = await fetch(`${API_BASE_URL}/api/user/recent-feeds`, {
         method: "POST",
         headers: {
@@ -79,7 +77,7 @@ function PodcastScanner() {
         throw new Error(`Failed to save recent feeds: ${errorData.error || response.statusText}`);
       }
       const savedFeeds = await response.json();
-      console.log("Saved recent feeds:", savedFeeds); // Debug response
+      console.log("Saved recent feeds:", savedFeeds);
       setRecentFeeds(savedFeeds);
     } catch (err) {
       console.error("❌ Error saving recent feeds:", err);
@@ -108,70 +106,72 @@ function PodcastScanner() {
     }
   };
 
-  const fetchEpisodes = (feedUrl) => {
+  const fetchEpisodes = async (feedUrl) => {
     const url = `${API_BASE_URL}/api/podcasts`;
     console.log("Fetching episodes from RSS feed:", url);
     setIsLoading(true);
     setError(null);
     setEpisodes([]);
 
-    fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ feedUrl }),
-    })
-      .then((res) => {
-        if (!res.ok) {
-          return res.json().then((errData) => {
-            throw new Error(errData.error || `HTTP error! Status: ${res.status}`);
-          });
+    try {
+      const token = await getToken();
+      console.log("Fetching episodes with token:", token);
+      const rssResponse = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`,
+        },
+        body: JSON.stringify({ feedUrl }),
+      });
+
+      if (!rssResponse.ok) {
+        const errData = await rssResponse.json();
+        throw new Error(errData.error || `HTTP error! Status: ${rssResponse.status}`);
+      }
+
+      const rssData = await rssResponse.json();
+      console.log("Received data from RSS feed:", rssData);
+      setEpisodes(rssData);
+
+      const mongoResponse = await fetch(`${url}?feedUrl=${encodeURIComponent(feedUrl)}`, {
+        headers: {
+          "Authorization": `Bearer ${token}`,
+        },
+      });
+
+      if (!mongoResponse.ok) {
+        console.warn("MongoDB fetch failed, using RSS data only");
+        return;
+      }
+
+      const mongoData = await mongoResponse.json();
+      console.log("Received MongoDB data:", mongoData);
+
+      const mergedEpisodes = rssData.map((rssEpisode) => {
+        const mongoEpisode = mongoData.find((m) => m.uniqueId === rssEpisode.uniqueId);
+        return {
+          ...rssEpisode,
+          recommendations: mongoEpisode?.recommendations || { summary: "", books: [], movies: [] },
+          transcription: mongoEpisode?.transcription || "",
+        };
+      });
+
+      setEpisodes(mergedEpisodes);
+      const storedRecommendations = {};
+      mergedEpisodes.forEach((episode) => {
+        const episodeId = episode._id || episode.uniqueId;
+        if (episode.recommendations?.summary && episodeId) {
+          storedRecommendations[episodeId] = episode.recommendations;
         }
-        return res.json();
-      })
-      .then((rssData) => {
-        console.log("Received data from RSS feed:", rssData);
-        setEpisodes(rssData);
-        return fetch(`${API_BASE_URL}/api/podcasts?feedUrl=${encodeURIComponent(feedUrl)}`)
-          .then((mongoRes) => {
-            if (!mongoRes.ok) {
-              console.warn("MongoDB fetch failed, using RSS data only");
-              return [];
-            }
-            return mongoRes.json();
-          })
-          .then((mongoData) => {
-            console.log("Received MongoDB data:", mongoData);
-            const mergedEpisodes = rssData.map((rssEpisode) => {
-              const mongoEpisode = mongoData.find((m) => m.uniqueId === rssEpisode.uniqueId);
-              return {
-                ...rssEpisode,
-                recommendations: mongoEpisode?.recommendations || {
-                  summary: "",
-                  books: [],
-                  movies: [],
-                },
-                transcription: mongoEpisode?.transcription || "",
-              };
-            });
-            setEpisodes(mergedEpisodes);
-            const storedRecommendations = {};
-            mergedEpisodes.forEach((episode) => {
-              const episodeId = episode._id || episode.uniqueId;
-              if (episode.recommendations?.summary && episodeId) {
-                storedRecommendations[episodeId] = episode.recommendations;
-              }
-            });
-            setRecommendations((prev) => ({ ...prev, ...storedRecommendations }));
-          })
-          .catch((mongoErr) => {
-            console.error("❌ Error fetching MongoDB data:", mongoErr);
-          });
-      })
-      .catch((err) => {
-        console.error("❌ Error fetching episodes from RSS feed:", err);
-        setError(err.message);
-      })
-      .finally(() => setIsLoading(false));
+      });
+      setRecommendations((prev) => ({ ...prev, ...storedRecommendations }));
+    } catch (err) {
+      console.error("❌ Error fetching episodes from RSS feed:", err);
+      setError(err.message);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleRecentFeedClick = (feedUrl) => {
@@ -190,22 +190,17 @@ function PodcastScanner() {
 
   const handleGetRecs = async (episode) => {
     const episodeId = episode._id || episode.uniqueId;
-
     if (!episode || !episodeId) {
       console.error("❌ Invalid episode or missing _id/uniqueId:", episode);
       setProgressStatus("Invalid episode data.");
       return;
     }
 
-    setExpandedEpisodes((prev) => ({
-      ...prev,
-      [episodeId]: !prev[episodeId],
-    }));
+    setExpandedEpisodes((prev) => ({ ...prev, [episodeId]: !prev[episodeId] }));
 
     if (
       recommendations[episodeId]?.summary &&
-      (recommendations[episodeId]?.books?.length > 0 ||
-        recommendations[episodeId]?.movies?.length > 0)
+      (recommendations[episodeId]?.books?.length > 0 || recommendations[episodeId]?.movies?.length > 0)
     ) {
       setProgressStatus("Complete");
       return;
@@ -215,8 +210,14 @@ function PodcastScanner() {
     setProgressStatus("Queued");
 
     try {
+      const token = await getToken();
       const response = await fetch(
-        `${API_BASE_URL}/api/episode/${episodeId}/recommendations`
+        `${API_BASE_URL}/api/episode/${episodeId}/recommendations`,
+        {
+          headers: {
+            "Authorization": `Bearer ${token}`,
+          },
+        }
       );
 
       if (!response.ok) {
@@ -233,10 +234,7 @@ function PodcastScanner() {
           console.warn("⚠️ Recommendations are empty.");
           setProgressStatus("No recommendations available.");
         } else {
-          setRecommendations((prev) => ({
-            ...prev,
-            [episodeId]: data.recommendations,
-          }));
+          setRecommendations((prev) => ({ ...prev, [episodeId]: data.recommendations }));
           setProgressStatus("Complete");
         }
       } else {
@@ -244,15 +242,16 @@ function PodcastScanner() {
         setProgressStatus("No recommendations available.");
       }
     } catch (error) {
-        console.error("❌ Error fetching recommendations:", error);
-        setProgressStatus(error.message); // Shows "Daily 'Get Recs' limit of 5 reached" if 429
-      } finally {
-        setLoadingRecs((prev) => ({ ...prev, [episodeId]: false }));
-      }
-    };
+      console.error("❌ Error fetching recommendations:", error);
+      setProgressStatus(error.message);
+    } finally {
+      setLoadingRecs((prev) => ({ ...prev, [episodeId]: false }));
+    }
+  };
 
   return (
     <Container className="py-5">
+      <p>DEBUG: PodcastScanner is rendering</p> {/* Temporary debug */}
       <div className="text-right mb-3">
         <UserButton />
       </div>
@@ -308,7 +307,7 @@ function PodcastScanner() {
         {episodes.map((episode, index) => {
           const episodeId = episode._id || episode.uniqueId;
           const isExpanded = expandedEpisodes[episodeId];
-          const isLoading = loadingRecs[episodeId];
+          const isLoadingRec = loadingRecs[episodeId];
 
           return (
             <ListGroup.Item key={episodeId || index} className="mb-2">
@@ -332,7 +331,7 @@ function PodcastScanner() {
 
               <Collapse in={isExpanded}>
                 <div className="mt-3">
-                  {isLoading ? (
+                  {isLoadingRec ? (
                     <Spinner animation="border" size="sm" />
                   ) : (
                     <p>Status: {progressStatus || "No recommendations available."}</p>
