@@ -72,7 +72,7 @@ async function transcribeAudio(audioUrl) {
   }
 }
 
-// Extract detailed recommendations using OpenAI (updated for uncapped, detailed recommendations)
+// Extract detailed recommendations using OpenAI (fixed for robust error handling)
 async function extractRecommendations(transcript, title) {
   const openAiApiKey = process.env.OPENAI_API_KEY;
   if (!openAiApiKey) {
@@ -82,7 +82,7 @@ async function extractRecommendations(transcript, title) {
   console.log(`📌 Extracting recommendations from transcription (length: ${transcript.length} chars)`);
 
   const prompt = `
-    You are an expert analyst tasked with extracting detailed insights from a podcast episode titled "${title}". Analyze the entire following transcript and provide:
+    You are an expert analyst tasked with extracting detailed insights from a podcast episode titled "${title}". Analyze the following transcript and provide:
     - A 2-5 sentence **summary** that captures the main topics, specific issues, arguments, or perspectives discussed, avoiding vague phrases like "explores related topics." **Exclude any content related to advertisements, sponsor messages, or product promotions (e.g., "This episode is brought to you by...", mentions of specific products or services for sale, or promotional segues unrelated to the core discussion). Focus only on the substantive conversation.**
     - A comprehensive list of **books** that are explicitly mentioned or clearly referenced in the transcript, with no cap on the number. For each book, include:
       - The **title**.
@@ -92,10 +92,10 @@ async function extractRecommendations(transcript, title) {
       - The **title**.
       - A detailed **description** (up to 5 sentences) summarizing its content and relevance.
       - **Context** (up to 5 sentences) explaining why the item was brought up in the episode, including the speaker, discussion topic, and any specific quotes or reasons given.
-    Respond in valid JSON format with fields: "summary" (string), "books" (array of {title, description, context}), and "movies" (array of {title, description, context}).
+    Respond in strict, valid JSON format with fields: "summary" (string), "books" (array of {title, description, context}), and "movies" (array of {title, description, context}).
 
     Transcript:
-    "${transcript}" (entire transcript provided, no truncation, to capture all references)
+    "${transcript.substring(0, 16000)}" (first 16000 characters provided to balance completeness and cost, adjust if needed)
   `;
 
   try {
@@ -103,14 +103,31 @@ async function extractRecommendations(transcript, title) {
     const response = await openAI.chat.completions.create({
       model: "gpt-3.5-turbo",
       messages: [{ role: "user", content: prompt }],
-      max_tokens: 4000, // Increased to handle longer responses with detailed descriptions and context
+      max_tokens: 3000, // Reduced to avoid hitting token limits, adjust if responses are truncated
       temperature: 0.7,
     });
 
-    let content = response.choices[0].message.content.trim();
+    let content = response.choices[0]?.message?.content?.trim() || "";
+    if (!content) {
+      throw new Error("OpenAI response content is empty or undefined");
+    }
+
     console.log(`Raw OpenAI response:`, content);
     content = content.replace(/```json\n/, "").replace(/\n```/, "").replace(/```/, "").trim();
-    const recommendations = JSON.parse(content);
+    
+    // Try to parse JSON, with fallback for malformed responses
+    let recommendations;
+    try {
+      recommendations = JSON.parse(content);
+    } catch (parseError) {
+      console.error(`❌ JSON parsing error:`, parseError.message, "Raw content:", content);
+      throw new Error(`Invalid JSON response from OpenAI: ${parseError.message}`);
+    }
+
+    if (!recommendations.summary || !Array.isArray(recommendations.books) || !Array.isArray(recommendations.movies)) {
+      throw new Error("OpenAI response missing required fields: summary, books, or movies");
+    }
+
     console.log(`✅ Extracted detailed recommendations:`, recommendations);
     return recommendations;
   } catch (error) {
