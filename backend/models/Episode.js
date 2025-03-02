@@ -9,8 +9,20 @@ const episodeSchema = new mongoose.Schema({
   feedUrl: String,
   recommendations: {
     summary: String,
-    books: [{ title: String, description: String }],
-    movies: [{ title: String, description: String }],
+    books: [
+      {
+        title: String,
+        description: String,
+        context: String,
+      },
+    ],
+    media: [ // Updated from movies to media for TV shows, movies, films, documentaries
+      {
+        title: String,
+        description: String,
+        context: String,
+      },
+    ],
   },
 }, { timestamps: true });
 

@@ -154,8 +154,7 @@ function PodcastScanner() {
         const mongoEpisode = mongoData.find((m) => m.uniqueId === rssEpisode.uniqueId);
         return {
           ...rssEpisode,
-          recommendations: mongoEpisode?.recommendations || { summary: "", books: [], movies: [] },
-          // No transcription field here, as it's no longer stored
+          recommendations: mongoEpisode?.recommendations || { summary: "", books: [], media: [] }, // Updated to use media instead of movies
         };
       });
 
@@ -202,7 +201,7 @@ function PodcastScanner() {
 
     if (
       recommendations[episodeId]?.summary &&
-      (recommendations[episodeId]?.books?.length > 0 || recommendations[episodeId]?.movies?.length > 0)
+      (recommendations[episodeId]?.books?.length > 0 || recommendations[episodeId]?.media?.length > 0) // Updated to use media instead of movies
     ) {
       setProgressStatus("Complete");
       return;
@@ -231,8 +230,8 @@ function PodcastScanner() {
       console.log(`📢 Fetched recommendations for episode ID: ${episodeId}`, data);
 
       if (data.recommendations) {
-        const { summary, books, movies } = data.recommendations;
-        if (!summary && books.length === 0 && movies.length === 0) {
+        const { summary, books, media } = data.recommendations; // Updated to use media instead of movies
+        if (!summary && books.length === 0 && media.length === 0) { // Updated to use media instead of movies
           console.warn("⚠️ Recommendations are empty.");
           setProgressStatus("No recommendations available.");
         } else {
@@ -356,7 +355,7 @@ function PodcastScanner() {
                   )}
                   {(recommendations[episodeId]?.summary ||
                     recommendations[episodeId]?.books?.length > 0 ||
-                    recommendations[episodeId]?.movies?.length > 0) && (
+                    recommendations[episodeId]?.media?.length > 0) && ( // Updated to use media instead of movies
                     <Card className="mt-2">
                       <Card.Body>
                         {recommendations[episodeId]?.summary && (
@@ -368,19 +367,23 @@ function PodcastScanner() {
                             <ul>
                               {recommendations[episodeId].books.map((book, idx) => (
                                 <li key={`book-${idx}`}>
-                                  <strong>{book.title}</strong> - {book.description}
+                                  <strong>{book.title}</strong> - 
+                                  <div>{book.description}</div>
+                                  <div><em>Context:</em> {book.context}</div>
                                 </li>
                               ))}
                             </ul>
                           </>
                         )}
-                        {recommendations[episodeId]?.movies?.length > 0 && (
+                        {recommendations[episodeId]?.media?.length > 0 && ( // Updated to use media instead of movies
                           <>
-                            <h6>Movies:</h6>
+                            <h6>Movies, Films, Documentaries, & TV Shows:</h6>
                             <ul>
-                              {recommendations[episodeId].movies.map((movie, idx) => (
-                                <li key={`movie-${idx}`}>
-                                  <strong>{movie.title}</strong> - {movie.description}
+                              {recommendations[episodeId].media.map((item, idx) => (
+                                <li key={`media-${idx}`}>
+                                  <strong>{item.title}</strong> - 
+                                  <div>{item.description}</div>
+                                  <div><em>Context:</em> {item.context}</div>
                                 </li>
                               ))}
                             </ul>

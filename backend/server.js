@@ -72,7 +72,7 @@ async function transcribeAudio(audioUrl) {
   }
 }
 
-// Extract detailed recommendations using OpenAI (fixed for robust error handling)
+// Extract detailed recommendations using OpenAI (updated for TV shows, movies, films, documentaries)
 async function extractRecommendations(transcript, title) {
   const openAiApiKey = process.env.OPENAI_API_KEY;
   if (!openAiApiKey) {
@@ -82,20 +82,20 @@ async function extractRecommendations(transcript, title) {
   console.log(`📌 Extracting recommendations from transcription (length: ${transcript.length} chars)`);
 
   const prompt = `
-    You are an expert analyst tasked with extracting detailed insights from a podcast episode titled "${title}". Analyze the following transcript and provide:
+    You are an expert analyst tasked with extracting detailed insights from a podcast episode titled "${title}". Analyze the entire following transcript and provide:
     - A 2-5 sentence **summary** that captures the main topics, specific issues, arguments, or perspectives discussed, avoiding vague phrases like "explores related topics." **Exclude any content related to advertisements, sponsor messages, or product promotions (e.g., "This episode is brought to you by...", mentions of specific products or services for sale, or promotional segues unrelated to the core discussion). Focus only on the substantive conversation.**
-    - A comprehensive list of **books** that are explicitly mentioned or clearly referenced in the transcript, with no cap on the number. For each book, include:
+    - A comprehensive list of **books** that are explicitly mentioned, referenced, or implied in the transcript, with no cap on the number. For each book, include:
       - The **title**.
       - A detailed **description** (up to 5 sentences) summarizing its content and relevance.
       - **Context** (up to 5 sentences) explaining why the book was brought up in the episode, including the speaker, discussion topic, and any specific quotes or reasons given.
-    - A comprehensive list of **movies**, **films**, and **documentaries** that are explicitly mentioned or clearly referenced in the transcript, with no cap on the number. For each item, include:
+    - A comprehensive list of **movies**, **films**, **documentaries**, and **TV shows** (e.g., "Mary Tyler Moore") that are explicitly mentioned, referenced, implied, or discussed in any context in the transcript, with no cap on the number. For each item, include:
       - The **title**.
       - A detailed **description** (up to 5 sentences) summarizing its content and relevance.
-      - **Context** (up to 5 sentences) explaining why the item was brought up in the episode, including the speaker, discussion topic, and any specific quotes or reasons given.
-    Respond in strict, valid JSON format with fields: "summary" (string), "books" (array of {title, description, context}), and "movies" (array of {title, description, context}).
+      - **Context** (up to 5 sentences) explaining why the item was brought up in the episode, including the speaker, discussion topic, and any specific quotes or reasons given, even if mentioned casually or as an example (e.g., cultural references, trivia, or recent releases like a Bob Dylan movie or "Indiana Jones").
+    Respond in strict, valid JSON format with fields: "summary" (string), "books" (array of {title, description, context}), and "media" (array of {title, description, context} for movies, films, documentaries, and TV shows).
 
     Transcript:
-    "${transcript.substring(0, 16000)}" (first 16000 characters provided to balance completeness and cost, adjust if needed)
+    "${transcript.substring(0, 24000)}" (first 24000 characters provided to capture more media references, adjust if needed)
   `;
 
   try {
@@ -103,7 +103,7 @@ async function extractRecommendations(transcript, title) {
     const response = await openAI.chat.completions.create({
       model: "gpt-3.5-turbo",
       messages: [{ role: "user", content: prompt }],
-      max_tokens: 3000, // Reduced to avoid hitting token limits, adjust if responses are truncated
+      max_tokens: 4000, // Increase to handle more detailed responses and capture all media
       temperature: 0.7,
     });
 
@@ -124,8 +124,8 @@ async function extractRecommendations(transcript, title) {
       throw new Error(`Invalid JSON response from OpenAI: ${parseError.message}`);
     }
 
-    if (!recommendations.summary || !Array.isArray(recommendations.books) || !Array.isArray(recommendations.movies)) {
-      throw new Error("OpenAI response missing required fields: summary, books, or movies");
+    if (!recommendations.summary || !Array.isArray(recommendations.books) || !Array.isArray(recommendations.media)) {
+      throw new Error("OpenAI response missing required fields: summary, books, or media");
     }
 
     console.log(`✅ Extracted detailed recommendations:`, recommendations);
@@ -148,7 +148,7 @@ const resetDailyCountIfNeeded = (user) => {
   return user;
 };
 
-// Fetch and generate recommendations with rate limiting (no transcription storage)
+// Fetch and generate recommendations with rate limiting (updated for media field)
 app.get("/api/episode/:id/recommendations", async (req, res) => {
   console.log("GET /api/episode/:id/recommendations - Request headers:", req.headers);
   const { id } = req.params;
@@ -289,7 +289,7 @@ app.post("/api/podcasts", async (req, res) => {
             feedUrl,
           },
           $setOnInsert: {
-            recommendations: { summary: "", books: [], movies: [] }, // No transcription
+            recommendations: { summary: "", books: [], media: [] }, // Updated to use media instead of movies
           },
         },
         {
