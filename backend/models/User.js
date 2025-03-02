@@ -1,10 +1,19 @@
-import mongoose from 'mongoose';
+// backend/models/User.js
+import mongoose from "mongoose";
 
 const userSchema = new mongoose.Schema({
-    id: { type: String, unique: true, required: true },      // Clerk user ID
-    fullName: String,
-    email: { type: String, unique: true, required: true },
-    created_at: { type: Date, default: Date.now },
-});
+  clerkId: { type: String, unique: true, required: true },
+  fullName: { type: String, required: true },
+  email: { type: String, unique: true, required: true, lowercase: true },
+  recentFeeds: [
+    {
+      feedUrl: { type: String, required: true },
+      artworkUrl: { type: String },
+      artworkUrl600: { type: String },
+      collectionName: { type: String },
+      artistName: { type: String },
+    },
+  ],
+}, { timestamps: true });
 
-export default mongoose.model('User', userSchema);
+export default mongoose.model("User", userSchema);

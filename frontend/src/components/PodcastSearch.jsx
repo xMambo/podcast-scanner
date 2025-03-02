@@ -1,63 +1,101 @@
 import { useState } from "react";
 import axios from "axios";
+import { Form, Button, Dropdown, Container, Spinner, Alert } from "react-bootstrap";
 
 const PodcastSearch = ({ onPodcastSelect }) => {
-    const [searchTerm, setSearchTerm] = useState("");
-    const [searchResults, setSearchResults] = useState([]);
-    const [loading, setLoading] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [searchResults, setSearchResults] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [showDropdown, setShowDropdown] = useState(false);
 
-    const handleSearch = async () => {
-        if (!searchTerm) return;
-        setLoading(true);
-        try {
-            const response = await axios.get(`https://itunes.apple.com/search`, {
-                params: {
-                    term: searchTerm,
-                    entity: "podcast",
-                    limit: 10,
-                },
-            });
-            setSearchResults(response.data.results);
-        } catch (error) {
-            console.error("❌ Error searching podcasts:", error);
-        } finally {
-            setLoading(false);
-        }
-    };
+  const handleSearchChange = async (e) => {
+    const term = e.target.value;
+    setSearchTerm(term);
 
-    return (
-        <div style={{ marginBottom: "20px" }}>
-            <input
-                type="text"
-                placeholder="Search for podcasts..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                style={{ padding: "5px", width: "300px", marginRight: "10px" }}
-            />
-            <button onClick={handleSearch} style={{ padding: "5px 10px" }}>
-                {loading ? "Searching..." : "Search"}
-            </button>
+    if (term.trim() === "") {
+      setSearchResults([]);
+      setShowDropdown(false);
+      return;
+    }
 
-            {searchResults.length > 0 && (
-                <div style={{ marginTop: "20px" }}>
-                    <h3>Search Results:</h3>
-                    <ul>
-                        {searchResults.map((podcast) => (
-                            <li key={podcast.collectionId} style={{ marginBottom: "10px" }}>
-                                <strong>{podcast.collectionName}</strong> - {podcast.artistName}
-                                <button
-                                    style={{ marginLeft: "10px" }}
-                                    onClick={() => onPodcastSelect(podcast)}
-                                >
-                                    Select
-                                </button>
-                            </li>
-                        ))}
-                    </ul>
-                </div>
-            )}
-        </div>
-    );
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await axios.get(`https://itunes.apple.com/search`, {
+        params: {
+          term,
+          entity: "podcast",
+          limit: 5,  // Limit for dropdown suggestions
+        },
+      });
+      setSearchResults(response.data.results);
+      setShowDropdown(true);
+    } catch (error) {
+      console.error("❌ Error searching podcasts:", error);
+      setError("Failed to fetch podcasts. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSelectPodcast = (podcast) => {
+    setSearchTerm(podcast.collectionName);
+    setShowDropdown(false);
+    setSearchResults([]);
+    onPodcastSelect(podcast);
+  };
+
+  return (
+    <Container className="mb-5 position-relative">
+      <Form className="mb-3">
+        <Form.Group controlId="searchInput" className="position-relative">
+          <Form.Control
+            type="text"
+            placeholder="Search for podcasts..."
+            value={searchTerm}
+            onChange={handleSearchChange}
+            autoComplete="off"
+          />
+          {loading && (
+            <div
+              style={{
+                position: "absolute",
+                right: "10px",
+                top: "50%",
+                transform: "translateY(-50%)",
+              }}
+            >
+              <Spinner animation="border" size="sm" />
+            </div>
+          )}
+        </Form.Group>
+      </Form>
+
+      {error && (
+        <Alert variant="danger" className="mt-3">
+          {error}
+        </Alert>
+      )}
+
+      {showDropdown && searchResults.length > 0 && (
+        <Dropdown show className="w-100">
+          <Dropdown.Menu className="w-100">
+            {searchResults.map((podcast) => (
+              <Dropdown.Item
+                key={podcast.collectionId}
+                onClick={() => handleSelectPodcast(podcast)}
+              >
+                <strong>{podcast.collectionName}</strong>
+                <br />
+                <small className="text-muted">{podcast.artistName}</small>
+              </Dropdown.Item>
+            ))}
+          </Dropdown.Menu>
+        </Dropdown>
+      )}
+    </Container>
+  );
 };
 
 export default PodcastSearch;

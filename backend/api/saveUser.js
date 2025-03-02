@@ -1,27 +1,33 @@
-import express from 'express';
-import User from '../models/User.js';  // Adjust the path if needed
+import express from "express";
+import User from "../models/User.js";  // Ensure this path is correct
+import mongoose from "mongoose";
 
 const router = express.Router();
 
-router.post("/save-user", async (req, res) => {  // No /api prefix here
+// ✅ Save or Update User
+router.post("/save-user", async (req, res) => {
     console.log("Received request to save user:", req.body);
 
+    const { id, fullName, email } = req.body;
+
+    // ✅ Input Validation
+    if (!id || !fullName || !email) {
+        console.error("❌ Missing required fields:", req.body);
+        return res.status(400).json({ error: "Missing required fields" });
+    }
+
     try {
-        const { id, fullName, email } = req.body;
+        // ✅ Upsert User (Create if not exists, update if exists)
+        const user = await User.findOneAndUpdate(
+            { id },  // Find by `id` field
+            { id, fullName, email },  // Update data
+            { new: true, upsert: true }  // Return updated doc & create if missing
+        );
 
-        let user = await User.findOne({ id });
-        if (user) {
-            console.log("User already exists:", user);
-            return res.status(200).json(user);
-        }
-
-        user = new User({ id, fullName, email });
-        await user.save();
-        console.log("User saved:", user);
-
+        console.log("✅ User saved or updated:", user);
         res.status(201).json(user);
     } catch (error) {
-        console.error("Error saving user:", error);
+        console.error("❌ Error saving user:", error);
         res.status(500).json({ error: "Internal Server Error" });
     }
 });

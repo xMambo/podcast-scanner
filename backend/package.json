@@ -4,22 +4,28 @@
   "main": "server.js",
   "type": "module",
   "scripts": {
-    "dev": "nodemon server.js",
-    "start": "node server.js"
+    "dev": "nodemon ./backend/server.js",
+    "start": "node ./backend/server.js"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=18.x"
   },
   "dependencies": {
-    "axios": "^1.7.9",
+    "@clerk/clerk-react": "^5.24.1",
+    "@clerk/clerk-sdk-node": "^5.1.6",
+    "axios": "^1.8.1",
     "cors": "^2.8.5",
     "dotenv": "^16.0.3",
     "express": "^4.18.2",
     "itunes-search": "^1.0.1",
     "mongoose": "^6.13.8",
+    "openai": "^4.86.1",
     "rss-parser": "^3.13.0"
   },
   "devDependencies": {
-    "nodemon": "^3.1.9"
+    "autoprefixer": "^10.4.20",
+    "install": "^0.13.0",
+    "npm": "^11.1.0",
+    "postcss": "^8.5.3"
   }
 }

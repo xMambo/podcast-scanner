@@ -1,62 +1,33 @@
+// models/Episode.js
 import mongoose from "mongoose";
 
 const EpisodeSchema = new mongoose.Schema({
-  title: {
-    type: String,
-    required: true,
-  },
-  image: {
-    type: String,
-    required: true,
-  },
-  pubDate: {
-    type: Date,
-    required: true,
-  },
-  link: {
-    type: String,
-    required: true,
-  },
-  uniqueId: {
-    type: String,
-    required: true,
-    unique: true,
-  },
-  audioUrl: String,
-  // New field: the RSS feed URL this episode came from
-  feedUrl: {
-    type: String,
-    required: true,
-  },
+  title: { type: String, required: true },
+  pubDate: { type: Date, required: true },
+  link: { type: String, required: true },
+  uniqueId: { type: String, required: true, unique: true, index: true },
+  audioUrl: { type: String, default: "" },
+  feedUrl: { type: String, required: true, index: true },
+  transcription: { type: String },
   recommendations: {
-    summary: String,
-    books: [
-      {
-        title: String,
-        description: String,
-      }
-    ],
-    movies: [
-      {
-        title: String,
-        description: String,
-      }
-    ]
+    summary: { type: String, default: "" },
+    books: [{ title: { type: String }, description: { type: String } }],
+    movies: [{ title: { type: String }, description: { type: String } }],
   },
-  
-  // Link to the user that scanned this episode
-userId: {
-  type: mongoose.Schema.Types.ObjectId,
-  ref: "User", // References the User model
-  required: true
-},
-scannedAt: {
-  type: Date,
-  default: Date.now, // store when the user scanned the episode
-},
-
+  image: { type: String, default: "" },
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+  scannedAt: { type: Date, default: Date.now },
+  duration: { type: Number, default: 0 },
+  transcriptionStatus: { 
+    type: String, 
+    enum: ["pending", "completed", "failed"], 
+    default: "pending" 
+  },
+  recommendationStatus: { 
+    type: String, 
+    enum: ["pending", "completed", "failed"], 
+    default: "pending" 
+  },
 });
-
-
 
 export default mongoose.model("Episode", EpisodeSchema);
