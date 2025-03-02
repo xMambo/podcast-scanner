@@ -1,7 +1,6 @@
-// src/App.jsx
 import React from "react";
-import { SignedIn, SignedOut, SignIn } from "@clerk/clerk-react"; // Removed Navigate
-import { BrowserRouter, Route, Routes, Navigate } from "react-router-dom"; // Added Navigate here
+import { SignedIn, SignedOut, SignIn } from "@clerk/clerk-react";
+import { BrowserRouter, Route, Routes, Navigate } from "react-router-dom";
 import PodcastScanner from "./components/PodcastScanner";
 
 const App = () => {
