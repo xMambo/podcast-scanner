@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import {
   Container,
+  Button, // Re-import Button from react-bootstrap
   Row,
   Col,
   ListGroup,
@@ -12,7 +13,7 @@ import {
 } from "react-bootstrap";
 import { UserButton, useUser, useAuth } from "@clerk/clerk-react";
 import PodcastSearch from "./PodcastSearch";
-import "./PodcastScanner.css"; // Optional: Create a CSS file for custom styles
+import "./PodcastScanner.css"; // Optional: CSS for custom play button
 
 const API_BASE_URL = "https://podcast-scanner.onrender.com";
 
@@ -336,7 +337,7 @@ function PodcastScanner() {
                   >
                     {playingAudio === episode.audioUrl ? "⏸" : "▶"}
                   </button>
-                  <Button
+                  <Button // Ensure Button is used here
                     variant="primary"
                     size="sm"
                     onClick={() => handleGetRecs(episode)}
