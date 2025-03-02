@@ -2,8 +2,8 @@ import React from "react";
 import { SignedIn, SignedOut } from "@clerk/clerk-react";
 import { BrowserRouter, Route, Routes, Navigate } from "react-router-dom";
 import PodcastScanner from "./components/PodcastScanner";
-import Home from "./Home"; // Adjust path if needed (e.g., "./pages/Home")
-import SignInPage from "./pages/SignInPage"; // Matches your file path
+import Home from "./pages/Home"; // Correct path: src/pages/Home.jsx
+import SignInPage from "./pages/SignInPage"; // Correct path: src/pages/SignInPage.jsx
 
 const App = () => {
   console.log("App.jsx rendered");
