@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import {
   Container,
-  Button, // Re-import Button from react-bootstrap
+  Button, // From react-bootstrap
   Row,
   Col,
   ListGroup,
@@ -13,7 +13,7 @@ import {
 } from "react-bootstrap";
 import { UserButton, useUser, useAuth } from "@clerk/clerk-react";
 import PodcastSearch from "./PodcastSearch";
-import "./PodcastScanner.css"; // Optional: CSS for custom play button
+import "./PodcastScanner.css"; // CSS for custom play button
 
 const API_BASE_URL = "https://podcast-scanner.onrender.com";
 
@@ -329,15 +329,15 @@ function PodcastScanner() {
                     {new Date(episode.pubDate).toLocaleDateString()}
                   </small>
                 </Col>
-                <Col xs={4} className="text-end">
+                <Col xs={4} className="text-end d-flex justify-content-end align-items-center">
                   <button
                     onClick={() => handlePlayAudio(episode)}
-                    className="play-button me-2"
+                    className="play-button mr-2"
                     aria-label={playingAudio === episode.audioUrl ? "Pause" : "Play"}
                   >
                     {playingAudio === episode.audioUrl ? "⏸" : "▶"}
                   </button>
-                  <Button // Ensure Button is used here
+                  <Button
                     variant="primary"
                     size="sm"
                     onClick={() => handleGetRecs(episode)}
