@@ -15,7 +15,7 @@ import {
 import { UserButton, useUser, useAuth } from "@clerk/clerk-react";
 import PodcastSearch from "./PodcastSearch";
 
-const API_BASE_URL = "http://localhost:5000";
+const API_BASE_URL = "https://podcast-scanner.onrender.com";
 
 function PodcastScanner() {
   const [episodes, setEpisodes] = useState([]);
