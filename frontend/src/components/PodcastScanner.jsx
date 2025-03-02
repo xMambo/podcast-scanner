@@ -20,8 +20,8 @@ import "./PodcastScanner.css"; // CSS for custom play button
 const API_BASE_URL = "https://podcast-scanner.onrender.com";
 
 function PodcastScanner() {
-  const [episodes, setEpisodes] = useState([]); // All fetched episodes
-  const [filteredEpisodes, setFilteredEpisodes] = useState([]); // Filtered episodes for display
+  const [episodes, setEpisodes] = useState([]); // All fetched episodes (full RSS feed)
+  const [filteredEpisodes, setFilteredEpisodes] = useState([]); // Filtered episodes for display (all, not just page)
   const [selectedPodcast, setSelectedPodcast] = useState(null);
   const [rssFeedUrl, setRssFeedUrl] = useState("");
   const [recentFeeds, setRecentFeeds] = useState([]);
@@ -96,7 +96,7 @@ function PodcastScanner() {
 
   const handlePodcastSelect = (podcast) => {
     console.log("Podcast object from search:", podcast);
-    setSelectedPodcast(podcast); // Ensure selectedPodcast is set
+    setSelectedPodcast(podcast); // Ensure selectedPodcast is set to prevent disappearance
     if (podcast.feedUrl) {
       setRssFeedUrl(podcast.feedUrl);
       setSearchKeywords(""); // Reset keywords search
@@ -159,12 +159,12 @@ function PodcastScanner() {
     const value = e.target.value;
     console.log("Keywords search value:", value);
     setSearchKeywords(value);
-    filterEpisodes();
+    filterEpisodes(); // Filter all episodes, not just current page
   };
 
-  // Filter episodes based on keywords search
+  // Filter episodes based on keywords search (entire RSS feed)
   const filterEpisodes = () => {
-    let filtered = [...episodes];
+    let filtered = [...episodes]; // Filter through all episodes, not just filteredEpisodes
 
     if (searchKeywords.trim()) {
       const lowerCaseKeywords = searchKeywords.toLowerCase();
@@ -176,7 +176,7 @@ function PodcastScanner() {
       });
     }
 
-    console.log("Filtered episodes:", filtered);
+    console.log("Filtered episodes (entire list):", filtered);
     setFilteredEpisodes(filtered);
     setCurrentPage(1); // Reset to first page on new search
   };
@@ -271,7 +271,7 @@ function PodcastScanner() {
       <h1 className="text-center mb-4">Podcast Scanner</h1>
       <PodcastSearch onPodcastSelect={handlePodcastSelect} />
 
-      {recentFeeds.length > 0 && ( // Restored Recently Searched Feeds above the podcast card
+      {recentFeeds.length > 0 && ( // Ensure Recently Searched Feeds are above the podcast card
         <div className="my-3">
           <h5>Recently Searched Feeds:</h5>
           <div>
@@ -292,7 +292,7 @@ function PodcastScanner() {
         </div>
       )}
 
-      {selectedPodcast && ( // Ensure podcast card renders when selectedPodcast exists
+      {selectedPodcast && ( // Ensure podcast card renders consistently
         <Card className="text-center my-4">
           <Card.Body>
             <Card.Title>{selectedPodcast.collectionName}</Card.Title>
