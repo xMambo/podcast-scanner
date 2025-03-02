@@ -72,7 +72,7 @@ async function transcribeAudio(audioUrl) {
   }
 }
 
-// Extract detailed recommendations using OpenAI
+// Extract detailed recommendations using OpenAI (updated for uncapped, detailed recommendations)
 async function extractRecommendations(transcript, title) {
   const openAiApiKey = process.env.OPENAI_API_KEY;
   if (!openAiApiKey) {
@@ -82,14 +82,20 @@ async function extractRecommendations(transcript, title) {
   console.log(`📌 Extracting recommendations from transcription (length: ${transcript.length} chars)`);
 
   const prompt = `
-    You are an expert analyst tasked with extracting detailed insights from a podcast episode titled "${title}". Analyze the following transcript and provide:
-    - A 2-3 sentence **summary** that captures the main topics, specific issues, arguments, or perspectives discussed, avoiding vague phrases like "explores related topics." **Exclude any content related to advertisements, sponsor messages, or product promotions (e.g., "This episode is brought to you by...", mentions of specific products or services for sale, or promotional segues unrelated to the core discussion). Focus only on the substantive conversation.**
-    - A list of **books** that are either mentioned in the transcript or highly relevant to the discussion’s themes. Include as many as are appropriate (no fixed limit), each with a title and a detailed description (2-3 sentences) connecting it to the episode's content. If no books are mentioned, suggest relevant ones based on the topics discussed.
-    - A list of **movies** that are either mentioned in the transcript or highly relevant to the discussion’s themes. Include as many as are appropriate (no fixed limit), each with a title and a detailed description (2-3 sentences) connecting it to the episode's content. If no movies are mentioned, suggest relevant ones based on the topics discussed.
-    Respond in valid JSON format with fields: "summary" (string), "books" (array of {title, description}), and "movies" (array of {title, description}).
+    You are an expert analyst tasked with extracting detailed insights from a podcast episode titled "${title}". Analyze the entire following transcript and provide:
+    - A 2-5 sentence **summary** that captures the main topics, specific issues, arguments, or perspectives discussed, avoiding vague phrases like "explores related topics." **Exclude any content related to advertisements, sponsor messages, or product promotions (e.g., "This episode is brought to you by...", mentions of specific products or services for sale, or promotional segues unrelated to the core discussion). Focus only on the substantive conversation.**
+    - A comprehensive list of **books** that are explicitly mentioned or clearly referenced in the transcript, with no cap on the number. For each book, include:
+      - The **title**.
+      - A detailed **description** (up to 5 sentences) summarizing its content and relevance.
+      - **Context** (up to 5 sentences) explaining why the book was brought up in the episode, including the speaker, discussion topic, and any specific quotes or reasons given.
+    - A comprehensive list of **movies**, **films**, and **documentaries** that are explicitly mentioned or clearly referenced in the transcript, with no cap on the number. For each item, include:
+      - The **title**.
+      - A detailed **description** (up to 5 sentences) summarizing its content and relevance.
+      - **Context** (up to 5 sentences) explaining why the item was brought up in the episode, including the speaker, discussion topic, and any specific quotes or reasons given.
+    Respond in valid JSON format with fields: "summary" (string), "books" (array of {title, description, context}), and "movies" (array of {title, description, context}).
 
     Transcript:
-    "${transcript.substring(0, 8000)}" (first 8000 characters provided)
+    "${transcript}" (entire transcript provided, no truncation, to capture all references)
   `;
 
   try {
@@ -97,7 +103,7 @@ async function extractRecommendations(transcript, title) {
     const response = await openAI.chat.completions.create({
       model: "gpt-3.5-turbo",
       messages: [{ role: "user", content: prompt }],
-      max_tokens: 1500,
+      max_tokens: 4000, // Increased to handle longer responses with detailed descriptions and context
       temperature: 0.7,
     });
 
@@ -202,7 +208,7 @@ app.get("/api/episode/:id/recommendations", async (req, res) => {
 
     await Episode.updateOne(
       { $or: [{ _id: id }, { uniqueId: id }] },
-      { $set: { recommendations: newRecommendations } } // Only save recommendations, not transcription
+      { $set: { recommendations: newRecommendations } } // Still no transcription
     );
     console.log(`✅ Saved recommendations for: ${episode.title}`);
 
@@ -326,7 +332,7 @@ app.post("/api/user/recent-feeds", async (req, res) => {
   }
 
   try {
-    console.log(`Saving recent feeds for clerkId: ${clerkId}`);
+    console.log(`Saving recent feeds for clerkId: ${clerkId}, data:`, recentFeeds);
     const user = await User.findOneAndUpdate(
       { clerkId },
       { $set: { recentFeeds } },
@@ -335,8 +341,8 @@ app.post("/api/user/recent-feeds", async (req, res) => {
     console.log(`Saved recent feeds:`, user.recentFeeds);
     res.json(user.recentFeeds);
   } catch (error) {
-    console.error("❌ Error in POST /api/user/recent-feeds:", error.stack);
-    res.status(500).json({ error: "Server error" });
+    console.error("❌ Error in POST /api/user/recent-feeds:", error.stack, "Request Body:", req.body);
+    res.status(500).json({ error: "Failed to save recent feeds", details: error.message });
   }
 });
 
