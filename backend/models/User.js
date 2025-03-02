@@ -1,4 +1,3 @@
-// backend/models/User.js
 import mongoose from "mongoose";
 
 const userSchema = new mongoose.Schema({
@@ -14,6 +13,10 @@ const userSchema = new mongoose.Schema({
       artistName: { type: String },
     },
   ],
+  recsUsage: {
+    date: { type: Date, default: Date.now }, // Tracks the day of usage
+    count: { type: Number, default: 0 },    // Number of "Get Recs" uses that day
+  },
 }, { timestamps: true });
 
 export default mongoose.model("User", userSchema);

@@ -16,6 +16,7 @@ import { UserButton, useUser, useAuth } from "@clerk/clerk-react";
 import PodcastSearch from "./PodcastSearch";
 
 const API_BASE_URL = "https://podcast-scanner.onrender.com";
+// const API_BASE_URL = "http://localhost:5000";
 
 function PodcastScanner() {
   const [episodes, setEpisodes] = useState([]);
@@ -219,7 +220,8 @@ function PodcastScanner() {
       );
 
       if (!response.ok) {
-        throw new Error(`HTTP error! Status: ${response.status}`);
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP error! Status: ${response.status}`);
       }
 
       const data = await response.json();
@@ -242,12 +244,12 @@ function PodcastScanner() {
         setProgressStatus("No recommendations available.");
       }
     } catch (error) {
-      console.error("❌ Error fetching recommendations:", error);
-      setProgressStatus(`Error: ${error.message}`);
-    } finally {
-      setLoadingRecs((prev) => ({ ...prev, [episodeId]: false }));
-    }
-  };
+        console.error("❌ Error fetching recommendations:", error);
+        setProgressStatus(error.message); // Shows "Daily 'Get Recs' limit of 5 reached" if 429
+      } finally {
+        setLoadingRecs((prev) => ({ ...prev, [episodeId]: false }));
+      }
+    };
 
   return (
     <Container className="py-5">
