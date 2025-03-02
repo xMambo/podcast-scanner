@@ -35,6 +35,7 @@ function PodcastScanner() {
   const [currentPage, setCurrentPage] = useState(1); // For pagination
   const [searchGuest, setSearchGuest] = useState(""); // For guest search
   const [searchTitle, setSearchTitle] = useState(""); // For episode title search
+  const [searchKeywords, setSearchKeywords] = useState(""); // For episode content (keywords) search
 
   const EPISODES_PER_PAGE = 20;
 
@@ -97,11 +98,12 @@ function PodcastScanner() {
 
   const handlePodcastSelect = (podcast) => {
     console.log("Podcast object from search:", podcast);
-    setSelectedPodcast(podcast);
+    setSelectedPodcast(podcast); // Ensure selectedPodcast is set
     if (podcast.feedUrl) {
       setRssFeedUrl(podcast.feedUrl);
       setSearchGuest(""); // Reset guest search
       setSearchTitle(""); // Reset title search
+      setSearchKeywords(""); // Reset keywords search
       fetchEpisodes(podcast.feedUrl);
       setRecentFeeds((prev) => {
         const newFeed = {
@@ -154,6 +156,7 @@ function PodcastScanner() {
     setRssFeedUrl(feedUrl);
     setSearchGuest(""); // Reset guest search
     setSearchTitle(""); // Reset title search
+    setSearchKeywords(""); // Reset keywords search
     fetchEpisodes(feedUrl);
   };
 
@@ -164,21 +167,55 @@ function PodcastScanner() {
     }
   };
 
-  // Handle episode title search with debugging
+  // Handle episode title search
   const handleTitleSearch = (e) => {
     const value = e.target.value;
-    console.log("Title search value:", value); // Debug log
+    console.log("Title search value:", value);
     setSearchTitle(value);
-    if (value.trim()) {
-      const filtered = episodes.filter(episode =>
-        episode.title.toLowerCase().includes(value.toLowerCase())
+    filterEpisodes();
+  };
+
+  // Handle keywords search (title and summary)
+  const handleKeywordsSearch = (e) => {
+    const value = e.target.value;
+    console.log("Keywords search value:", value);
+    setSearchKeywords(value);
+    filterEpisodes();
+  };
+
+  // Filter episodes based on title, guest, and keywords searches
+  const filterEpisodes = () => {
+    let filtered = [...episodes];
+
+    if (searchTitle.trim()) {
+      const lowerCaseTitle = searchTitle.toLowerCase();
+      filtered = filtered.filter(episode =>
+        episode.title.toLowerCase().includes(lowerCaseTitle)
       );
-      console.log("Filtered episodes by title:", filtered); // Debug log
-      setFilteredEpisodes(filtered);
-    } else {
-      console.log("Resetting filtered episodes to all episodes"); // Debug log
-      setFilteredEpisodes(episodes); // Show all episodes if search is empty
     }
+
+    if (searchGuest.trim()) {
+      const lowerCaseGuest = searchGuest.toLowerCase();
+      filtered = filtered.filter(episode => {
+        return (
+          episode.title.toLowerCase().includes(lowerCaseGuest) ||
+          (episode.recommendations?.summary?.toLowerCase()?.includes(lowerCaseGuest) || false)
+        );
+      });
+    }
+
+    if (searchKeywords.trim()) {
+      const lowerCaseKeywords = searchKeywords.toLowerCase();
+      filtered = filtered.filter(episode => {
+        return (
+          episode.title.toLowerCase().includes(lowerCaseKeywords) ||
+          (episode.recommendations?.summary?.toLowerCase()?.includes(lowerCaseKeywords) || false)
+        );
+      });
+    }
+
+    console.log("Filtered episodes:", filtered);
+    setFilteredEpisodes(filtered);
     setCurrentPage(1); // Reset to first page on new search
   };
 
@@ -260,7 +297,7 @@ function PodcastScanner() {
   const totalPages = Math.ceil(filteredEpisodes.length / EPISODES_PER_PAGE);
 
   const handlePageChange = (pageNumber) => {
-    console.log("Changing page to:", pageNumber); // Debug log
+    console.log("Changing page to:", pageNumber);
     setCurrentPage(pageNumber);
   };
 
@@ -302,28 +339,7 @@ function PodcastScanner() {
         </Button>
       </Form>
 
-      {recentFeeds.length > 0 && (
-        <div className="my-3">
-          <h5>Recently Searched Feeds:</h5>
-          <div>
-            {recentFeeds
-              .filter((feed) => feed.feedUrl !== rssFeedUrl)
-              .map((feed, index) => (
-                <Image
-                  key={index}
-                  src={feed.artworkUrl}
-                  alt="Podcast artwork"
-                  rounded
-                  style={{ width: "60px", height: "60px", cursor: "pointer", margin: "0 5px 5px 0" }}
-                  onClick={() => handleRecentFeedClick(feed.feedUrl)}
-                  onError={(e) => { e.target.src = "https://via.placeholder.com/60"; }}
-                />
-              ))}
-          </div>
-        </div>
-      )}
-
-      {selectedPodcast && (
+      {selectedPodcast && ( // Ensure podcast card renders when selectedPodcast exists
         <Card className="text-center my-4">
           <Card.Body>
             <Card.Title>{selectedPodcast.collectionName}</Card.Title>
@@ -340,12 +356,29 @@ function PodcastScanner() {
         </Card>
       )}
 
+      <Form className="mb-3">
+        <Row>
+          <Col md={4}> {/* Smaller width for keyword search */}
+            <Form.Group controlId="keywordsSearch">
+              <Form.Control
+                type="text"
+                placeholder="Search keywords..."
+                value={searchKeywords}
+                onChange={handleKeywordsSearch}
+                onKeyPress={(e) => e.key === 'Enter' && handleKeywordsSearch({ target: { value: searchKeywords } })}
+                style={{ fontSize: "0.9rem" }} // Make it slightly smaller visually
+              />
+            </Form.Group>
+          </Col>
+        </Row>
+      </Form>
+
       {error && <Alert variant="danger">{error}</Alert>}
 
       <h2 className="mt-5">Latest Episodes</h2>
       {isLoading && <Spinner animation="border" className="d-block mx-auto" />}
       {!isLoading && filteredEpisodes.length === 0 && !error && (
-        <p>Select a podcast or search for a guest/title to see episodes.</p>
+        <p>Select a podcast or search for a guest/title/keywords to see episodes.</p>
       )}
       <ListGroup className="mb-4">
         {currentEpisodes.map((episode, index) => {
