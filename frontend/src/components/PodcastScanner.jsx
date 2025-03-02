@@ -96,7 +96,7 @@ function PodcastScanner() {
 
   const handlePodcastSelect = (podcast) => {
     console.log("Podcast object from search:", podcast);
-    setSelectedPodcast(podcast); // Set selectedPodcast explicitly
+    setSelectedPodcast(podcast); // Ensure selectedPodcast is set to prevent disappearance
     if (podcast.feedUrl) {
       setRssFeedUrl(podcast.feedUrl); // Update rssFeedUrl to match the selected podcast
       setSearchKeywords(""); // Reset keywords search
@@ -162,17 +162,17 @@ function PodcastScanner() {
     }
   };
 
-  // Handle keywords search (title and summary)
+  // Handle keywords search (title and summary) for entire RSS feed
   const handleKeywordsSearch = (e) => {
     const value = e.target.value;
-    console.log("Keywords search value:", value);
+    console.log("Keywords search value (entire list):", value);
     setSearchKeywords(value);
     filterEpisodes(); // Filter all episodes, not just current page
   };
 
   // Filter episodes based on keywords search (entire RSS feed)
   const filterEpisodes = () => {
-    let filtered = [...episodes]; // Filter through all episodes, not just filteredEpisodes
+    let filtered = [...episodes]; // Start with all episodes (full RSS feed), not filteredEpisodes
 
     if (searchKeywords.trim()) {
       const lowerCaseKeywords = searchKeywords.toLowerCase();
@@ -185,7 +185,7 @@ function PodcastScanner() {
     }
 
     console.log("Filtered episodes (entire list):", filtered);
-    setFilteredEpisodes(filtered);
+    setFilteredEpisodes(filtered); // Update filteredEpisodes with all matching episodes
     setCurrentPage(1); // Reset to first page on new search
   };
 
