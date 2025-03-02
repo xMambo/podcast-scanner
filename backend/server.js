@@ -72,7 +72,7 @@ async function transcribeAudio(audioUrl) {
   }
 }
 
-// Extract detailed recommendations using OpenAI (updated for TV shows, movies, films, documentaries)
+// Extract detailed recommendations using OpenAI
 async function extractRecommendations(transcript, title) {
   const openAiApiKey = process.env.OPENAI_API_KEY;
   if (!openAiApiKey) {
@@ -148,7 +148,7 @@ const resetDailyCountIfNeeded = (user) => {
   return user;
 };
 
-// Fetch and generate recommendations with rate limiting (updated for media field)
+// Fetch and generate recommendations with rate limiting
 app.get("/api/episode/:id/recommendations", async (req, res) => {
   console.log("GET /api/episode/:id/recommendations - Request headers:", req.headers);
   const { id } = req.params;
@@ -259,7 +259,7 @@ app.get("/api/podcasts", async (req, res) => {
   }
 });
 
-// Save new episodes from RSS feed (remove transcription field)
+// Save all episodes from RSS feed (no limit)
 app.post("/api/podcasts", async (req, res) => {
   console.log("POST /api/podcasts - Request body:", req.body);
   const { feedUrl } = req.body;
@@ -272,10 +272,9 @@ app.post("/api/podcasts", async (req, res) => {
   try {
     const feed = await parser.parseURL(feedUrl);
     console.log(`✅ Successfully parsed RSS feed with ${feed.items.length} items`);
-    const latestItems = feed.items.slice(0, 20);
     const episodesFromFeed = [];
 
-    for (const item of latestItems) {
+    for (const item of feed.items) { // Fetch all episodes, no limit
       const link = item.link || `https://fallback.example.com/${item.guid}`;
       console.log(`Processing episode: ${item.title} (uniqueId: ${item.guid})`);
       const updatedEpisode = await Episode.findOneAndUpdate(
@@ -289,7 +288,7 @@ app.post("/api/podcasts", async (req, res) => {
             feedUrl,
           },
           $setOnInsert: {
-            recommendations: { summary: "", books: [], media: [] }, // Updated to use media instead of movies
+            recommendations: { summary: "", books: [], media: [] },
           },
         },
         {
@@ -301,11 +300,56 @@ app.post("/api/podcasts", async (req, res) => {
       episodesFromFeed.push(updatedEpisode);
     }
 
-    console.log(`✅ Processed ${episodesFromFeed.length} episodes from RSS feed (limited to latest 20)`);
+    console.log(`✅ Processed ${episodesFromFeed.length} episodes from RSS feed (all available)`);
     res.json(episodesFromFeed);
   } catch (error) {
     console.error("❌ Error in POST /api/podcasts:", error.stack);
     res.status(500).json({ error: "Failed to fetch episodes from RSS feed" });
+  }
+});
+
+// Search episodes by guest name (fixed for 404)
+app.get("/api/podcasts/search", async (req, res) => {
+  console.log("GET /api/podcasts/search - Request query:", req.query);
+  const { feedUrl, guest } = req.query;
+  if (!feedUrl || !guest) {
+    console.error("❌ feedUrl and guest are required in request query");
+    return res.status(400).json({ error: "feedUrl and guest are required" });
+  }
+
+  // Ensure Clerk authentication is checked
+  const clerkId = req.auth?.userId;
+  if (!clerkId) {
+    console.log("No clerkId found in request");
+    return res.status(401).json({ error: "Unauthorized: Missing Clerk ID" });
+  }
+
+  try {
+    // Fetch episodes from MongoDB
+    let episodes = await Episode.find({ feedUrl })
+      .select("title pubDate link uniqueId image audioUrl recommendations")
+      .sort({ pubDate: -1 });
+
+    // Filter episodes by guest name (case-insensitive, enhanced search)
+    const lowerCaseGuest = guest.toLowerCase();
+    episodes = episodes.filter(episode => {
+      // Search title and summary for guest name
+      return (
+        episode.title.toLowerCase().includes(lowerCaseGuest) ||
+        (episode.recommendations?.summary?.toLowerCase()?.includes(lowerCaseGuest) || false)
+      );
+    });
+
+    if (episodes.length === 0) {
+      console.warn(`⚠️ No episodes found for feed: ${feedUrl} with guest: ${guest}`);
+      return res.status(404).json({ error: "No episodes found for this guest" });
+    }
+
+    console.log(`✅ Fetched ${episodes.length} episodes for guest: ${guest} from MongoDB`);
+    res.json(episodes);
+  } catch (error) {
+    console.error("❌ Error in GET /api/podcasts/search:", error.stack);
+    res.status(500).json({ error: "Failed to search episodes" });
   }
 });
 
