@@ -33,8 +33,6 @@ function PodcastScanner() {
   const [isLoading, setIsLoading] = useState(false);
   const [playingAudio, setPlayingAudio] = useState(null); // State for current playing audio
   const [currentPage, setCurrentPage] = useState(1); // For pagination
-  const [searchGuest, setSearchGuest] = useState(""); // For guest search
-  const [searchTitle, setSearchTitle] = useState(""); // For episode title search
   const [searchKeywords, setSearchKeywords] = useState(""); // For episode content (keywords) search
 
   const EPISODES_PER_PAGE = 20;
@@ -101,8 +99,6 @@ function PodcastScanner() {
     setSelectedPodcast(podcast); // Ensure selectedPodcast is set
     if (podcast.feedUrl) {
       setRssFeedUrl(podcast.feedUrl);
-      setSearchGuest(""); // Reset guest search
-      setSearchTitle(""); // Reset title search
       setSearchKeywords(""); // Reset keywords search
       fetchEpisodes(podcast.feedUrl);
       setRecentFeeds((prev) => {
@@ -120,8 +116,8 @@ function PodcastScanner() {
     }
   };
 
-  const fetchEpisodes = async (feedUrl, guest = "") => {
-    const url = guest ? `${API_BASE_URL}/api/podcasts/search?feedUrl=${encodeURIComponent(feedUrl)}&guest=${encodeURIComponent(guest)}` : `${API_BASE_URL}/api/podcasts?feedUrl=${encodeURIComponent(feedUrl)}`;
+  const fetchEpisodes = async (feedUrl) => {
+    const url = `${API_BASE_URL}/api/podcasts?feedUrl=${encodeURIComponent(feedUrl)}`;
     console.log(`Fetching episodes from ${url}`);
     setIsLoading(true);
     setError(null);
@@ -154,25 +150,8 @@ function PodcastScanner() {
 
   const handleRecentFeedClick = (feedUrl) => {
     setRssFeedUrl(feedUrl);
-    setSearchGuest(""); // Reset guest search
-    setSearchTitle(""); // Reset title search
     setSearchKeywords(""); // Reset keywords search
     fetchEpisodes(feedUrl);
-  };
-
-  const handleGuestSearch = (e) => {
-    e.preventDefault();
-    if (rssFeedUrl && searchGuest.trim()) {
-      fetchEpisodes(rssFeedUrl, searchGuest.trim());
-    }
-  };
-
-  // Handle episode title search
-  const handleTitleSearch = (e) => {
-    const value = e.target.value;
-    console.log("Title search value:", value);
-    setSearchTitle(value);
-    filterEpisodes();
   };
 
   // Handle keywords search (title and summary)
@@ -183,26 +162,9 @@ function PodcastScanner() {
     filterEpisodes();
   };
 
-  // Filter episodes based on title, guest, and keywords searches
+  // Filter episodes based on keywords search
   const filterEpisodes = () => {
     let filtered = [...episodes];
-
-    if (searchTitle.trim()) {
-      const lowerCaseTitle = searchTitle.toLowerCase();
-      filtered = filtered.filter(episode =>
-        episode.title.toLowerCase().includes(lowerCaseTitle)
-      );
-    }
-
-    if (searchGuest.trim()) {
-      const lowerCaseGuest = searchGuest.toLowerCase();
-      filtered = filtered.filter(episode => {
-        return (
-          episode.title.toLowerCase().includes(lowerCaseGuest) ||
-          (episode.recommendations?.summary?.toLowerCase()?.includes(lowerCaseGuest) || false)
-        );
-      });
-    }
 
     if (searchKeywords.trim()) {
       const lowerCaseKeywords = searchKeywords.toLowerCase();
@@ -309,35 +271,26 @@ function PodcastScanner() {
       <h1 className="text-center mb-4">Podcast Scanner</h1>
       <PodcastSearch onPodcastSelect={handlePodcastSelect} />
 
-      <Form className="mb-3">
-        <Row>
-          <Col md={6}>
-            <Form.Group controlId="guestSearch">
-              <Form.Control
-                type="text"
-                placeholder="Search by guest name..."
-                value={searchGuest}
-                onChange={(e) => setSearchGuest(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && handleGuestSearch(e)}
-              />
-            </Form.Group>
-          </Col>
-          <Col md={6}>
-            <Form.Group controlId="titleSearch">
-              <Form.Control
-                type="text"
-                placeholder="Search episode titles..."
-                value={searchTitle}
-                onChange={handleTitleSearch}
-                onKeyPress={(e) => e.key === 'Enter' && handleTitleSearch({ target: { value: searchTitle } })}
-              />
-            </Form.Group>
-          </Col>
-        </Row>
-        <Button onClick={handleGuestSearch} variant="primary" className="mt-2">
-          Search Guest
-        </Button>
-      </Form>
+      {recentFeeds.length > 0 && ( // Restored Recently Searched Feeds above the podcast card
+        <div className="my-3">
+          <h5>Recently Searched Feeds:</h5>
+          <div>
+            {recentFeeds
+              .filter((feed) => feed.feedUrl !== rssFeedUrl)
+              .map((feed, index) => (
+                <Image
+                  key={index}
+                  src={feed.artworkUrl}
+                  alt="Podcast artwork"
+                  rounded
+                  style={{ width: "60px", height: "60px", cursor: "pointer", margin: "0 5px 5px 0" }}
+                  onClick={() => handleRecentFeedClick(feed.feedUrl)}
+                  onError={(e) => { e.target.src = "https://via.placeholder.com/60"; }}
+                />
+              ))}
+          </div>
+        </div>
+      )}
 
       {selectedPodcast && ( // Ensure podcast card renders when selectedPodcast exists
         <Card className="text-center my-4">
@@ -378,7 +331,7 @@ function PodcastScanner() {
       <h2 className="mt-5">Latest Episodes</h2>
       {isLoading && <Spinner animation="border" className="d-block mx-auto" />}
       {!isLoading && filteredEpisodes.length === 0 && !error && (
-        <p>Select a podcast or search for a guest/title/keywords to see episodes.</p>
+        <p>Select a podcast or search keywords to see episodes.</p>
       )}
       <ListGroup className="mb-4">
         {currentEpisodes.map((episode, index) => {
