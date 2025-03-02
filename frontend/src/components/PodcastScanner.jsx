@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import {
   Container,
-  Button,
   Row,
   Col,
   ListGroup,
@@ -13,6 +12,7 @@ import {
 } from "react-bootstrap";
 import { UserButton, useUser, useAuth } from "@clerk/clerk-react";
 import PodcastSearch from "./PodcastSearch";
+import "./PodcastScanner.css"; // Optional: Create a CSS file for custom styles
 
 const API_BASE_URL = "https://podcast-scanner.onrender.com";
 
@@ -329,14 +329,13 @@ function PodcastScanner() {
                   </small>
                 </Col>
                 <Col xs={4} className="text-end">
-                  <Button
-                    variant="primary"
-                    size="sm"
+                  <button
                     onClick={() => handlePlayAudio(episode)}
-                    className="me-2"
+                    className="play-button me-2"
+                    aria-label={playingAudio === episode.audioUrl ? "Pause" : "Play"}
                   >
                     {playingAudio === episode.audioUrl ? "⏸" : "▶"}
-                  </Button>
+                  </button>
                   <Button
                     variant="primary"
                     size="sm"

@@ -1,0 +1,25 @@
+/* frontend/src/components/PodcastScanner.css */
+.play-button {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%; /* Makes it round */
+    background-color: #ccc; /* Grey background */
+    border: none;
+    color: #333; /* Darker grey text/icon */
+    font-size: 16px; /* Adjust size of ▶/⏸ */
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    transition: background-color 0.3s ease;
+  }
+  
+  .play-button:hover {
+    background-color: #999; /* Darker grey on hover for minimal feedback */
+  }
+  
+  .play-button:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(51, 51, 51, 0.3); /* Minimal focus outline */
+  }
