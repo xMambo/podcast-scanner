@@ -1,5 +1,5 @@
-// migrate-users.js (in backend/)
-import { Clerk } from '@clerk/clerk-sdk-node';
+// backend/migrate-users.js
+import Clerk from '@clerk/clerk-sdk-node'; // Try importing the default export
 import User from './models/User.js'; // Ensure this path matches your structure
 import 'dotenv/config'; // Use dotenv for ES modules
 
