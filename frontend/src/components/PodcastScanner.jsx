@@ -154,7 +154,7 @@ function PodcastScanner() {
         return {
           ...rssEpisode,
           recommendations: mongoEpisode?.recommendations || { summary: "", books: [], movies: [] },
-          transcription: mongoEpisode?.transcription || "",
+          // No transcription field here, as it's no longer stored
         };
       });
 
@@ -335,7 +335,7 @@ function PodcastScanner() {
                     onClick={() => handlePlayAudio(episode)}
                     className="me-2"
                   >
-                    {playingAudio === episode.audioUrl ? "Pause" : "Play"}
+                    {playingAudio === episode.audioUrl ? "⏸" : "▶"}
                   </Button>
                   <Button
                     variant="primary"
