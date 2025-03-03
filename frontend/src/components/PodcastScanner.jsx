@@ -219,6 +219,7 @@ function PodcastScanner() {
 
     setExpandedEpisodes((prev) => ({ ...prev, [episodeId]: !prev[episodeId] }));
 
+    // Check if recommendations already exist in state and are complete
     if (
       recommendations[episodeId]?.summary &&
       (recommendations[episodeId]?.books?.length > 0 || recommendations[episodeId]?.media?.length > 0)
@@ -228,7 +229,7 @@ function PodcastScanner() {
     }
 
     setLoadingRecs((prev) => ({ ...prev, [episodeId]: true }));
-    setProgressStatus("Queued");
+    setProgressStatus("Fetching...");
 
     try {
       const token = await getToken();
@@ -264,7 +265,7 @@ function PodcastScanner() {
       }
     } catch (error) {
       console.error("❌ Error fetching recommendations:", error);
-      setProgressStatus(error.message);
+      setProgressStatus(`Error: ${error.message}`);
     } finally {
       setLoadingRecs((prev) => ({ ...prev, [episodeId]: false }));
     }

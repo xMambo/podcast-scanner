@@ -148,7 +148,7 @@ const resetDailyCountIfNeeded = (user) => {
   return user;
 };
 
-// Fetch and generate recommendations with rate limiting
+// Fetch and generate recommendations with rate limiting, prioritizing existing recommendations
 app.get("/api/episode/:id/recommendations", async (req, res) => {
   console.log("GET /api/episode/:id/recommendations - Request headers:", req.headers);
   const { id } = req.params;
@@ -168,8 +168,15 @@ app.get("/api/episode/:id/recommendations", async (req, res) => {
       return res.status(404).json({ error: "Episode not found" });
     }
 
+    // Check if recommendations already exist and are complete
+    if (episode.recommendations && episode.recommendations.summary && 
+        (episode.recommendations.books.length > 0 || episode.recommendations.media.length > 0)) {
+      console.log(`✅ Returning existing recommendations for episode: ${episode.title}`);
+      return res.json({ recommendations: episode.recommendations });
+    }
+
+    // If no or incomplete recommendations, apply rate limiting for non-owners
     if (clerkId !== ownerClerkId) {
-      // Check and create/update user atomically
       let user = await User.findOne({ clerkId });
       if (!user) {
         console.log(`Creating new user for clerkId: ${clerkId}`);
@@ -213,7 +220,7 @@ app.get("/api/episode/:id/recommendations", async (req, res) => {
       console.log(`Skipping rate limit for owner clerkId: ${clerkId}`);
     }
 
-    // Generate recommendations without saving transcription
+    // Generate new recommendations if none exist or are incomplete
     console.log(`⚙️ Generating new recommendations for episode: ${episode.title}`);
     if (!episode.audioUrl) {
       console.warn(`⚠️ No audio URL for episode: ${episode.title}`);
@@ -225,7 +232,7 @@ app.get("/api/episode/:id/recommendations", async (req, res) => {
 
     await Episode.updateOne(
       { $or: [{ _id: id }, { uniqueId: id }] },
-      { $set: { recommendations: newRecommendations } } // Still no transcription
+      { $set: { recommendations: newRecommendations } }
     );
     console.log(`✅ Saved recommendations for: ${episode.title}`);
 
@@ -242,7 +249,7 @@ app.get("/api/podcasts", async (req, res) => {
   const { feedUrl } = req.query;
   try {
     const episodes = await Episode.find({ feedUrl })
-      .select("title pubDate link uniqueId image audioUrl recommendations") // Remove transcription
+      .select("title pubDate link uniqueId _id image audioUrl recommendations") // Include _id explicitly
       .sort({ pubDate: -1 })
       .limit(50);
 
@@ -332,7 +339,7 @@ app.get("/api/podcasts/search", async (req, res) => {
   try {
     // Fetch episodes from MongoDB
     let episodes = await Episode.find({ feedUrl })
-      .select("title pubDate link uniqueId image audioUrl recommendations")
+      .select("title pubDate link uniqueId _id image audioUrl recommendations")
       .sort({ pubDate: -1 });
 
     // Filter episodes by guest name (case-insensitive, enhanced search)
