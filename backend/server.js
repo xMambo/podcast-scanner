@@ -236,7 +236,7 @@ app.get("/api/episode/:id/recommendations", async (req, res) => {
   }
 });
 
-// Fetch episodes from MongoDB (remove transcription from response)
+// Fetch episodes from MongoDB (return 200 with empty array if none found)
 app.get("/api/podcasts", async (req, res) => {
   console.log("GET /api/podcasts - Request query:", req.query);
   const { feedUrl } = req.query;
@@ -246,20 +246,15 @@ app.get("/api/podcasts", async (req, res) => {
       .sort({ pubDate: -1 })
       .limit(50);
 
-    if (episodes.length === 0) {
-      console.warn(`⚠️ No episodes found for feed: ${feedUrl}`);
-      return res.status(404).json({ error: "No episodes found" });
-    }
-
-    console.log(`✅ Fetched ${episodes.length} episodes from MongoDB`);
-    res.json(episodes);
+    console.log(`✅ Fetched ${episodes.length} episodes from MongoDB for feedUrl: ${feedUrl}`);
+    res.json(episodes); // Return empty array if no episodes, no 404
   } catch (error) {
     console.error("❌ Error in GET /api/podcasts:", error.stack);
     res.status(500).json({ error: "Failed to fetch episodes" });
   }
 });
 
-// Save all episodes from RSS feed (no limit)
+// Save all episodes from RSS feed (no limit, ensures at least 20 episodes if available)
 app.post("/api/podcasts", async (req, res) => {
   console.log("POST /api/podcasts - Request body:", req.body);
   const { feedUrl } = req.body;
@@ -273,6 +268,11 @@ app.post("/api/podcasts", async (req, res) => {
     const feed = await parser.parseURL(feedUrl);
     console.log(`✅ Successfully parsed RSS feed with ${feed.items.length} items`);
     const episodesFromFeed = [];
+
+    if (feed.items.length === 0) {
+      console.warn(`⚠️ No items found in RSS feed: ${feedUrl}`);
+      return res.status(404).json({ error: "No episodes found in RSS feed" });
+    }
 
     for (const item of feed.items) { // Fetch all episodes, no limit
       const link = item.link || `https://fallback.example.com/${item.guid}`;
@@ -298,6 +298,11 @@ app.post("/api/podcasts", async (req, res) => {
       );
 
       episodesFromFeed.push(updatedEpisode);
+    }
+
+    // Ensure at least 20 episodes are processed if available in the feed
+    if (episodesFromFeed.length < 20 && feed.items.length >= 20) {
+      console.warn(`⚠️ Only ${episodesFromFeed.length} episodes processed, but feed has ${feed.items.length}. Check for duplicate uniqueIds or parsing issues.`);
     }
 
     console.log(`✅ Processed ${episodesFromFeed.length} episodes from RSS feed (all available)`);

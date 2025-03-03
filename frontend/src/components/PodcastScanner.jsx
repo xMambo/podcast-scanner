@@ -123,8 +123,18 @@ function PodcastScanner() {
     setError(null);
 
     try {
+      // First, ensure episodes exist by posting the feed if needed
       const token = await getToken();
-      console.log("Fetching episodes with token:", token);
+      await fetch(`${API_BASE_URL}/api/podcasts`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`,
+        },
+        body: JSON.stringify({ feedUrl }),
+      });
+
+      // Then fetch the episodes
       const response = await fetch(url, {
         headers: {
           "Authorization": `Bearer ${token}`,
@@ -133,16 +143,23 @@ function PodcastScanner() {
 
       if (!response.ok) {
         const errData = await response.json();
-        throw new Error(errData.error || `HTTP error! Status: ${response.status}`);
+        if (response.status === 404 && errData.error === "No episodes found") {
+          setEpisodes([]); // Set empty episodes
+          setFilteredEpisodes([]); // Clear filtered episodes
+          setError("No episodes found for this feed. Please try another podcast.");
+        } else {
+          throw new Error(errData.error || `HTTP error! Status: ${response.status}`);
+        }
+        return;
       }
 
       const data = await response.json();
       console.log("Received data from API:", data);
-      setEpisodes(data);
-      setFilteredEpisodes(data); // Set filtered episodes to all episodes initially
+      setEpisodes(data || []); // Handle null/undefined data
+      setFilteredEpisodes(data || []); // Set filtered episodes to all episodes initially
     } catch (err) {
       console.error("❌ Error fetching episodes from API:", err);
-      setError(err.message);
+      setError(err.message || "Failed to fetch episodes. Please try again.");
     } finally {
       setIsLoading(false);
     }
