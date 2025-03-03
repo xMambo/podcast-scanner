@@ -37,17 +37,22 @@ app.get("/", (req, res) => {
   res.send("Podcast Scanner Backend Running");
 });
 
-// Transcribe audio using AssemblyAI
-async function transcribeAudio(audioUrl) {
+// Transcribe audio using AssemblyAI, defaulting to Nano model with Best fallback
+async function transcribeAudio(audioUrl, useNano = true) {
   const assemblyApiKey = process.env.ASSEMBLYAI_API_KEY;
   if (!assemblyApiKey) {
     throw new Error("AssemblyAI API key is not set in .env");
   }
 
-  console.log(`🎤 Sending audio to AssemblyAI for transcription: ${audioUrl}`);
+  console.log(`🎤 Sending audio to AssemblyAI for transcription: ${audioUrl} (Model: ${useNano ? "Nano" : "Best"})`);
+  const config = {
+    audio_url: audioUrl,
+    speech_model: useNano ? "nano" : "best" // Use Nano by default, fall back to Best if needed
+  };
+
   const transcriptResponse = await axios.post(
     "https://api.assemblyai.com/v2/transcript",
-    { audio_url: audioUrl },
+    config,
     { headers: { authorization: assemblyApiKey } }
   );
 
@@ -63,10 +68,14 @@ async function transcribeAudio(audioUrl) {
 
     const status = pollingResponse.data.status;
     if (status === "completed") {
-      console.log(`✅ Transcription completed for ${transcriptId}`);
+      console.log(`✅ Transcription completed for ${transcriptId} (Model: ${useNano ? "Nano" : "Best"})`);
       return pollingResponse.data.text;
     } else if (status === "error") {
       console.error(`❌ Transcription error: ${pollingResponse.data.error}`);
+      if (useNano) {
+        console.warn("Retrying with Best model due to Nano failure...");
+        return transcribeAudio(audioUrl, false); // Fallback to Best if Nano fails
+      }
       throw new Error(`Transcription error: ${pollingResponse.data.error}`);
     }
   }
@@ -227,7 +236,7 @@ app.get("/api/episode/:id/recommendations", async (req, res) => {
       return res.status(400).json({ error: "No audio URL available" });
     }
 
-    const transcription = await transcribeAudio(episode.audioUrl);
+    const transcription = await transcribeAudio(episode.audioUrl, true); // Use Nano by default
     const newRecommendations = await extractRecommendations(transcription, episode.title);
 
     await Episode.updateOne(
