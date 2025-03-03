@@ -151,7 +151,7 @@ const resetDailyCountIfNeeded = (user) => {
 // Fetch and generate recommendations with rate limiting, prioritizing existing recommendations
 app.get("/api/episode/:id/recommendations", async (req, res) => {
   console.log("GET /api/episode/:id/recommendations - Request headers:", req.headers);
-  const { id } = req.params;
+  const { id } = req.params; // This is now treated as uniqueId (UUID/GUID)
   const clerkId = req.auth?.userId;
   const ownerClerkId = "user_2tjQfte8BQov14RMeDEQVsLuxC8"; // Your Clerk user ID
 
@@ -161,10 +161,10 @@ app.get("/api/episode/:id/recommendations", async (req, res) => {
   }
 
   try {
-    console.log(`🔄 Fetching recommendations for episode ID: ${id}, clerkId: ${clerkId}`);
-    let episode = await Episode.findOne({ $or: [{ _id: id }, { uniqueId: id }] });
+    console.log(`🔄 Fetching recommendations for episode uniqueId: ${id}, clerkId: ${clerkId}`);
+    let episode = await Episode.findOne({ uniqueId: id }); // Query only by uniqueId (string), not _id
     if (!episode) {
-      console.warn(`❌ Episode not found for id: ${id}`);
+      console.warn(`❌ Episode not found for uniqueId: ${id}`);
       return res.status(404).json({ error: "Episode not found" });
     }
 
@@ -231,7 +231,7 @@ app.get("/api/episode/:id/recommendations", async (req, res) => {
     const newRecommendations = await extractRecommendations(transcription, episode.title);
 
     await Episode.updateOne(
-      { $or: [{ _id: id }, { uniqueId: id }] },
+      { uniqueId: id }, // Update using uniqueId, not _id
       { $set: { recommendations: newRecommendations } }
     );
     console.log(`✅ Saved recommendations for: ${episode.title}`);
@@ -261,7 +261,7 @@ app.get("/api/podcasts", async (req, res) => {
   }
 });
 
-// Fetch raw episodes from RSS feed without storing in MongoDB (new endpoint)
+// Fetch raw episodes from RSS feed without storing in MongoDB
 app.get("/api/podcasts/raw", async (req, res) => {
   console.log("GET /api/podcasts/raw - Request query:", req.query);
   const { feedUrl } = req.query;
@@ -289,7 +289,7 @@ app.get("/api/podcasts/raw", async (req, res) => {
   }
 });
 
-// Save a single episode to MongoDB (new endpoint for trickling data)
+// Save a single episode to MongoDB
 app.post("/api/podcasts/single", async (req, res) => {
   console.log("POST /api/podcasts/single - Request body:", req.body);
   const { title, pubDate, link, uniqueId, audioUrl, feedUrl } = req.body;
@@ -300,7 +300,7 @@ app.post("/api/podcasts/single", async (req, res) => {
 
   try {
     const updatedEpisode = await Episode.findOneAndUpdate(
-      { uniqueId },
+      { uniqueId }, // Query by uniqueId (string)
       {
         $set: {
           title: title || "Untitled Episode",
