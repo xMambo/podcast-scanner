@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react"; // Added useCallback for optimization
 import {
   Container,
   Button,
@@ -20,7 +20,7 @@ import "./PodcastScanner.css"; // CSS for custom play button
 const API_BASE_URL = "https://podcast-scanner.onrender.com";
 
 function PodcastScanner() {
-  const [episodes, setEpisodes] = useState([]); // All fetched episodes (full RSS feed)
+  const [episodes, setEpisodes] = useState([]); // All fetched episodes (full RSS feed) in memory
   const [filteredEpisodes, setFilteredEpisodes] = useState([]); // Filtered episodes for display (all, not just page)
   const [selectedPodcast, setSelectedPodcast] = useState(null);
   const [rssFeedUrl, setRssFeedUrl] = useState("");
@@ -117,24 +117,14 @@ function PodcastScanner() {
   };
 
   const fetchEpisodes = async (feedUrl) => {
-    const url = `${API_BASE_URL}/api/podcasts?feedUrl=${encodeURIComponent(feedUrl)}`;
-    console.log(`Fetching episodes from ${url}`);
+    const url = `${API_BASE_URL}/api/podcasts/raw?feedUrl=${encodeURIComponent(feedUrl)}`;
+    console.log(`Fetching raw episodes from ${url}`);
     setIsLoading(true);
     setError(null);
+    setProgressStatus("Fetching episodes from RSS feed...");
 
     try {
-      // First, ensure episodes exist by posting the feed if needed
       const token = await getToken();
-      await fetch(`${API_BASE_URL}/api/podcasts`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`,
-        },
-        body: JSON.stringify({ feedUrl }),
-      });
-
-      // Then fetch the episodes
       const response = await fetch(url, {
         headers: {
           "Authorization": `Bearer ${token}`,
@@ -143,23 +133,18 @@ function PodcastScanner() {
 
       if (!response.ok) {
         const errData = await response.json();
-        if (response.status === 404 && errData.error === "No episodes found") {
-          setEpisodes([]); // Set empty episodes
-          setFilteredEpisodes([]); // Clear filtered episodes
-          setError("No episodes found for this feed. Please try another podcast.");
-        } else {
-          throw new Error(errData.error || `HTTP error! Status: ${response.status}`);
-        }
-        return;
+        throw new Error(errData.error || `HTTP error! Status: ${response.status}`);
       }
 
       const data = await response.json();
-      console.log("Received data from API:", data);
-      setEpisodes(data || []); // Handle null/undefined data
+      console.log("Received raw data from API:", data);
+      setEpisodes(data || []); // Store raw episodes in memory
       setFilteredEpisodes(data || []); // Set filtered episodes to all episodes initially
+      setProgressStatus(""); // Clear progress message
     } catch (err) {
-      console.error("❌ Error fetching episodes from API:", err);
+      console.error("❌ Error fetching raw episodes from API:", err);
       setError(err.message || "Failed to fetch episodes. Please try again.");
+      setProgressStatus(""); // Clear progress message
     } finally {
       setIsLoading(false);
     }
@@ -179,17 +164,17 @@ function PodcastScanner() {
     }
   };
 
-  // Handle keywords search (title and summary) for entire RSS feed with enhanced matching
+  // Handle keywords search (title and summary) for entire RSS feed in memory
   const handleKeywordsSearch = (e) => {
     const value = e.target.value;
     console.log("Keywords search value (entire list):", value);
     setSearchKeywords(value);
-    filterEpisodes(); // Filter all episodes, not just current page
+    filterEpisodes(); // Filter all episodes in memory
   };
 
-  // Filter episodes based on keywords search (entire RSS feed) with enhanced matching
-  const filterEpisodes = () => {
-    let filtered = [...episodes]; // Start with all episodes (full RSS feed), not filteredEpisodes
+  // Filter episodes based on keywords search (entire RSS feed in memory) with enhanced matching
+  const filterEpisodes = useCallback(() => {
+    let filtered = [...episodes]; // Start with all episodes from RSS feed in memory
 
     if (searchKeywords.trim()) {
       const lowerCaseKeywords = searchKeywords.toLowerCase().split(/\s+/).filter(Boolean); // Split by whitespace, remove empty
@@ -207,12 +192,12 @@ function PodcastScanner() {
     console.log("Filtered episodes (entire list):", filtered.map(ep => ep.title)); // Log titles for debugging
     setFilteredEpisodes(filtered); // Update filteredEpisodes with all matching episodes
     setCurrentPage(1); // Reset to first page on new search
-  };
+  }, [episodes, searchKeywords]); // Memoize with dependencies
 
   const handleGetRecs = async (episode) => {
-    const episodeId = episode._id || episode.uniqueId;
+    const episodeId = episode.uniqueId; // Use uniqueId for consistency
     if (!episode || !episodeId) {
-      console.error("❌ Invalid episode or missing _id/uniqueId:", episode);
+      console.error("❌ Invalid episode or missing uniqueId:", episode);
       setProgressStatus("Invalid episode data.");
       return;
     }
@@ -229,10 +214,21 @@ function PodcastScanner() {
     }
 
     setLoadingRecs((prev) => ({ ...prev, [episodeId]: true }));
-    setProgressStatus("Fetching...");
+    setProgressStatus("Fetching recommendations...");
 
     try {
       const token = await getToken();
+
+      // Save the episode to MongoDB if not already present
+      await fetch(`${API_BASE_URL}/api/podcasts/single`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`,
+        },
+        body: JSON.stringify({ ...episode, feedUrl: rssFeedUrl }),
+      });
+
       const response = await fetch(
         `${API_BASE_URL}/api/episode/${episodeId}/recommendations`,
         {
@@ -356,6 +352,7 @@ function PodcastScanner() {
       </Form>
 
       {error && <Alert variant="danger">{error}</Alert>}
+      {progressStatus && <Alert variant="info">{progressStatus}</Alert>}
 
       <h2 className="mt-5">Latest Episodes</h2>
       {isLoading && <Spinner animation="border" className="d-block mx-auto" />}
@@ -364,7 +361,7 @@ function PodcastScanner() {
       )}
       <ListGroup className="mb-4">
         {currentEpisodes.map((episode, index) => {
-          const episodeId = episode._id || episode.uniqueId;
+          const episodeId = episode.uniqueId; // Use uniqueId for consistency
           const isExpanded = expandedEpisodes[episodeId];
           const isLoadingRec = loadingRecs[episodeId];
 

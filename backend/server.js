@@ -261,7 +261,73 @@ app.get("/api/podcasts", async (req, res) => {
   }
 });
 
-// Save all episodes from RSS feed (no limit, ensures at least 20 episodes if available)
+// Fetch raw episodes from RSS feed without storing in MongoDB (new endpoint)
+app.get("/api/podcasts/raw", async (req, res) => {
+  console.log("GET /api/podcasts/raw - Request query:", req.query);
+  const { feedUrl } = req.query;
+  if (!feedUrl) {
+    console.error("❌ No feedUrl provided in request query");
+    return res.status(400).json({ error: "feedUrl is required" });
+  }
+
+  try {
+    const feed = await parser.parseURL(feedUrl);
+    console.log(`✅ Successfully parsed RSS feed with ${feed.items.length} items`);
+    const episodes = feed.items.map(item => ({
+      title: item.title || "Untitled Episode",
+      pubDate: new Date(item.pubDate),
+      link: item.link || `https://fallback.example.com/${item.guid}`,
+      uniqueId: item.guid || `guid-${Math.random().toString(36).substr(2, 9)}`,
+      audioUrl: item.enclosure?.url || "",
+      feedUrl,
+    }));
+    console.log(`✅ Returned ${episodes.length} raw episodes from RSS feed`);
+    res.json(episodes.slice(0, 100)); // Limit to 100 episodes for performance
+  } catch (error) {
+    console.error("❌ Error in GET /api/podcasts/raw:", error.stack);
+    res.status(500).json({ error: "Failed to fetch raw episodes from RSS feed" });
+  }
+});
+
+// Save a single episode to MongoDB (new endpoint for trickling data)
+app.post("/api/podcasts/single", async (req, res) => {
+  console.log("POST /api/podcasts/single - Request body:", req.body);
+  const { title, pubDate, link, uniqueId, audioUrl, feedUrl } = req.body;
+  if (!uniqueId || !feedUrl) {
+    console.error("❌ uniqueId and feedUrl are required in request body");
+    return res.status(400).json({ error: "uniqueId and feedUrl are required" });
+  }
+
+  try {
+    const updatedEpisode = await Episode.findOneAndUpdate(
+      { uniqueId },
+      {
+        $set: {
+          title: title || "Untitled Episode",
+          pubDate: new Date(pubDate),
+          link: link || `https://fallback.example.com/${uniqueId}`,
+          audioUrl: audioUrl || "",
+          feedUrl,
+        },
+        $setOnInsert: {
+          recommendations: { summary: "", books: [], media: [] },
+        },
+      },
+      {
+        upsert: true,
+        new: true,
+      }
+    );
+
+    console.log(`✅ Saved/updated episode: ${title} with uniqueId: ${uniqueId}`);
+    res.json(updatedEpisode);
+  } catch (error) {
+    console.error("❌ Error in POST /api/podcasts/single:", error.stack);
+    res.status(500).json({ error: "Failed to save episode" });
+  }
+});
+
+// Save all episodes from RSS feed (optional, for bulk loading if needed, but not used by default)
 app.post("/api/podcasts", async (req, res) => {
   console.log("POST /api/podcasts - Request body:", req.body);
   const { feedUrl } = req.body;
@@ -305,11 +371,6 @@ app.post("/api/podcasts", async (req, res) => {
       );
 
       episodesFromFeed.push(updatedEpisode);
-    }
-
-    // Ensure at least 20 episodes are processed if available in the feed
-    if (episodesFromFeed.length < 20 && feed.items.length >= 20) {
-      console.warn(`⚠️ Only ${episodesFromFeed.length} episodes processed, but feed has ${feed.items.length}. Check for duplicate uniqueIds or parsing issues.`);
     }
 
     console.log(`✅ Processed ${episodesFromFeed.length} episodes from RSS feed (all available)`);
