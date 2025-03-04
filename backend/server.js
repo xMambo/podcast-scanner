@@ -112,7 +112,7 @@ async function extractRecommendations(transcript, title) {
     const response = await openAI.chat.completions.create({
       model: "gpt-3.5-turbo",
       messages: [{ role: "user", content: prompt }],
-      max_tokens: 4000, // Increase to handle more detailed responses and capture all media
+      max_tokens: 4000,
       temperature: 0.7,
     });
 
@@ -124,7 +124,6 @@ async function extractRecommendations(transcript, title) {
     console.log(`Raw OpenAI response:`, content);
     content = content.replace(/```json\n/, "").replace(/\n```/, "").replace(/```/, "").trim();
     
-    // Try to parse JSON, with fallback for malformed responses
     let recommendations;
     try {
       recommendations = JSON.parse(content);
@@ -157,12 +156,13 @@ const resetDailyCountIfNeeded = (user) => {
   return user;
 };
 
-// Fetch and generate recommendations with rate limiting, prioritizing existing recommendations
+// Fetch and generate recommendations with rate limiting
 app.get("/api/episode/:id/recommendations", async (req, res) => {
   console.log("GET /api/episode/:id/recommendations - Request headers:", req.headers);
-  const { id } = req.params; // This is now treated as uniqueId (UUID/GUID)
+  console.log("Request auth:", req.auth); // Log Clerk auth for debugging
+  const { id } = req.params;
   const clerkId = req.auth?.userId;
-  const ownerClerkId = "user_2tjQfte8BQov14RMeDEQVsLuxC8"; // Your Clerk user ID
+  const ownerClerkId = "user_2tjQfte8BQov14RMeDEQVsLuxC8";
 
   if (!clerkId) {
     console.log("No clerkId found in request");
@@ -171,20 +171,18 @@ app.get("/api/episode/:id/recommendations", async (req, res) => {
 
   try {
     console.log(`🔄 Fetching recommendations for episode uniqueId: ${id}, clerkId: ${clerkId}`);
-    let episode = await Episode.findOne({ uniqueId: id }); // Query only by uniqueId (string), not _id
+    let episode = await Episode.findOne({ uniqueId: id });
     if (!episode) {
       console.warn(`❌ Episode not found for uniqueId: ${id}`);
       return res.status(404).json({ error: "Episode not found" });
     }
 
-    // Check if recommendations already exist and are complete
     if (episode.recommendations && episode.recommendations.summary && 
         (episode.recommendations.books.length > 0 || episode.recommendations.media.length > 0)) {
       console.log(`✅ Returning existing recommendations for episode: ${episode.title}`);
       return res.json({ recommendations: episode.recommendations });
     }
 
-    // If no or incomplete recommendations, apply rate limiting for non-owners
     if (clerkId !== ownerClerkId) {
       let user = await User.findOne({ clerkId });
       if (!user) {
@@ -211,36 +209,30 @@ app.get("/api/episode/:id/recommendations", async (req, res) => {
         return res.status(429).json({ error: "Daily 'Get Recs' limit of 5 reached" });
       }
 
-      // Increment usage count atomically
       const updatedUser = await User.findOneAndUpdate(
         { clerkId },
         {
           $inc: { "recsUsage.count": 1 },
-          $set: { "recsUsage.date": user.recsUsage.date }, // Ensure date persists
+          $set: { "recsUsage.date": user.recsUsage.date },
         },
         { new: true }
       );
-      if (!updatedUser) {
-        console.error(`❌ Failed to increment recsUsage for clerkId: ${clerkId}`);
-        return res.status(500).json({ error: "Failed to update usage count" });
-      }
       console.log(`Updated recsUsage for ${clerkId}: ${updatedUser.recsUsage.count}`);
     } else {
       console.log(`Skipping rate limit for owner clerkId: ${clerkId}`);
     }
 
-    // Generate new recommendations if none exist or are incomplete
     console.log(`⚙️ Generating new recommendations for episode: ${episode.title}`);
     if (!episode.audioUrl) {
       console.warn(`⚠️ No audio URL for episode: ${episode.title}`);
       return res.status(400).json({ error: "No audio URL available" });
     }
 
-    const transcription = await transcribeAudio(episode.audioUrl, true); // Use Nano by default
+    const transcription = await transcribeAudio(episode.audioUrl, true);
     const newRecommendations = await extractRecommendations(transcription, episode.title);
 
     await Episode.updateOne(
-      { uniqueId: id }, // Update using uniqueId, not _id
+      { uniqueId: id },
       { $set: { recommendations: newRecommendations } }
     );
     console.log(`✅ Saved recommendations for: ${episode.title}`);
@@ -252,18 +244,18 @@ app.get("/api/episode/:id/recommendations", async (req, res) => {
   }
 });
 
-// Fetch episodes from MongoDB (return 200 with empty array if none found)
+// Fetch episodes from MongoDB
 app.get("/api/podcasts", async (req, res) => {
   console.log("GET /api/podcasts - Request query:", req.query);
   const { feedUrl } = req.query;
   try {
     const episodes = await Episode.find({ feedUrl })
-      .select("title pubDate link uniqueId _id image audioUrl recommendations") // Include _id explicitly
+      .select("title pubDate link uniqueId _id image audioUrl recommendations")
       .sort({ pubDate: -1 })
       .limit(50);
 
     console.log(`✅ Fetched ${episodes.length} episodes from MongoDB for feedUrl: ${feedUrl}`);
-    res.json(episodes); // Return empty array if no episodes, no 404
+    res.json(episodes);
   } catch (error) {
     console.error("❌ Error in GET /api/podcasts:", error.stack);
     res.status(500).json({ error: "Failed to fetch episodes" });
@@ -291,7 +283,7 @@ app.get("/api/podcasts/raw", async (req, res) => {
       feedUrl,
     }));
     console.log(`✅ Returned ${episodes.length} raw episodes from RSS feed`);
-    res.json(episodes.slice(0, 100)); // Limit to 100 episodes for performance
+    res.json(episodes.slice(0, 100));
   } catch (error) {
     console.error("❌ Error in GET /api/podcasts/raw:", error.stack);
     res.status(500).json({ error: "Failed to fetch raw episodes from RSS feed" });
@@ -309,7 +301,7 @@ app.post("/api/podcasts/single", async (req, res) => {
 
   try {
     const updatedEpisode = await Episode.findOneAndUpdate(
-      { uniqueId }, // Query by uniqueId (string)
+      { uniqueId },
       {
         $set: {
           title: title || "Untitled Episode",
@@ -328,7 +320,7 @@ app.post("/api/podcasts/single", async (req, res) => {
       }
     );
 
-    console.log(`✅ Saved/updated episode: ${title} with uniqueId: ${uniqueId}`);
+    console.log(`✅ Saved episode to MongoDB: ${updatedEpisode.uniqueId}`, updatedEpisode);
     res.json(updatedEpisode);
   } catch (error) {
     console.error("❌ Error in POST /api/podcasts/single:", error.stack);
@@ -336,7 +328,7 @@ app.post("/api/podcasts/single", async (req, res) => {
   }
 });
 
-// Save all episodes from RSS feed (optional, for bulk loading if needed, but not used by default)
+// Save all episodes from RSS feed
 app.post("/api/podcasts", async (req, res) => {
   console.log("POST /api/podcasts - Request body:", req.body);
   const { feedUrl } = req.body;
@@ -356,7 +348,7 @@ app.post("/api/podcasts", async (req, res) => {
       return res.status(404).json({ error: "No episodes found in RSS feed" });
     }
 
-    for (const item of feed.items) { // Fetch all episodes, no limit
+    for (const item of feed.items) {
       const link = item.link || `https://fallback.example.com/${item.guid}`;
       console.log(`Processing episode: ${item.title} (uniqueId: ${item.guid})`);
       const updatedEpisode = await Episode.findOneAndUpdate(
@@ -382,7 +374,7 @@ app.post("/api/podcasts", async (req, res) => {
       episodesFromFeed.push(updatedEpisode);
     }
 
-    console.log(`✅ Processed ${episodesFromFeed.length} episodes from RSS feed (all available)`);
+    console.log(`✅ Processed ${episodesFromFeed.length} episodes from RSS feed`);
     res.json(episodesFromFeed);
   } catch (error) {
     console.error("❌ Error in POST /api/podcasts:", error.stack);
@@ -390,7 +382,7 @@ app.post("/api/podcasts", async (req, res) => {
   }
 });
 
-// Search episodes by guest name (fixed for 404)
+// Search episodes by guest name
 app.get("/api/podcasts/search", async (req, res) => {
   console.log("GET /api/podcasts/search - Request query:", req.query);
   const { feedUrl, guest } = req.query;
@@ -399,7 +391,6 @@ app.get("/api/podcasts/search", async (req, res) => {
     return res.status(400).json({ error: "feedUrl and guest are required" });
   }
 
-  // Ensure Clerk authentication is checked
   const clerkId = req.auth?.userId;
   if (!clerkId) {
     console.log("No clerkId found in request");
@@ -407,15 +398,12 @@ app.get("/api/podcasts/search", async (req, res) => {
   }
 
   try {
-    // Fetch episodes from MongoDB
     let episodes = await Episode.find({ feedUrl })
       .select("title pubDate link uniqueId _id image audioUrl recommendations")
       .sort({ pubDate: -1 });
 
-    // Filter episodes by guest name (case-insensitive, enhanced search)
     const lowerCaseGuest = guest.toLowerCase();
     episodes = episodes.filter(episode => {
-      // Search title and summary for guest name
       return (
         episode.title.toLowerCase().includes(lowerCaseGuest) ||
         (episode.recommendations?.summary?.toLowerCase()?.includes(lowerCaseGuest) || false)
@@ -435,7 +423,7 @@ app.get("/api/podcasts/search", async (req, res) => {
   }
 });
 
-// Get user's recent feeds (unchanged)
+// Get user's recent feeds
 app.get("/api/user/recent-feeds", async (req, res) => {
   console.log("GET /api/user/recent-feeds - Request headers:", req.headers);
   const clerkId = req.auth?.userId;
@@ -449,7 +437,7 @@ app.get("/api/user/recent-feeds", async (req, res) => {
     const user = await User.findOne({ clerkId });
     if (!user) {
       console.log(`No user found for clerkId: ${clerkId}`);
-      return res.json([]); // Return empty array for new users
+      return res.json([]);
     }
     console.log(`Fetched recent feeds:`, user.recentFeeds || []);
     res.json(user.recentFeeds || []);
@@ -459,7 +447,7 @@ app.get("/api/user/recent-feeds", async (req, res) => {
   }
 });
 
-// Save user's recent feeds (unchanged)
+// Save user's recent feeds
 app.post("/api/user/recent-feeds", async (req, res) => {
   console.log("POST /api/user/recent-feeds - Request headers:", req.headers, "Body:", req.body);
   const clerkId = req.auth?.userId;
@@ -484,9 +472,15 @@ app.post("/api/user/recent-feeds", async (req, res) => {
     console.log(`Saved recent feeds:`, user.recentFeeds);
     res.json(user.recentFeeds);
   } catch (error) {
-    console.error("❌ Error in POST /api/user/recent-feeds:", error.stack, "Request Body:", req.body);
-    res.status(500).json({ error: "Failed to save recent feeds", details: error.message });
+    console.error("❌ Error in POST /api/user/recent-feeds:", error.stack);
+    res.status(500).json({ error: "Failed to save recent feeds" });
   }
+});
+
+// Catch-all route to ensure JSON responses
+app.use((req, res) => {
+  console.log(`Unhandled route: ${req.method} ${req.url}`);
+  res.status(404).json({ error: "Route not found" });
 });
 
 const PORT = process.env.PORT || 5000;
