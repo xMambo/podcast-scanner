@@ -22,8 +22,8 @@ app.use(cors({
 }));
 app.use(express.json());
 app.use(ClerkExpressWithAuth({
-  secretKey: process.env.CLERK_SECRET_KEY,
-  publishableKey: process.env.CLERK_PUBLISHABLE_KEY,
+  secretKey: process.env.CLERK_SECRET_KEY, // Use production key here if deployed
+  publishableKey: process.env.CLERK_PUBLISHABLE_KEY, // Use production key here if deployed
 }));
 app.use("/api", saveUserRouter);
 
@@ -157,10 +157,13 @@ const resetDailyCountIfNeeded = (user) => {
 };
 
 // Fetch and generate recommendations with rate limiting
-app.get("/api/episode/:id/recommendations", async (req, res) => {
-  console.log("GET /api/episode/:id/recommendations - Request headers:", req.headers);
+app.get("/api/episode/:uniqueId/recommendations", async (req, res) => {
+  console.log(
+    "GET /api/episode/:uniqueId/recommendations - Request headers:",
+    req.headers
+  );
   console.log("Request auth:", req.auth); // Log Clerk auth for debugging
-  const { id } = req.params;
+  const { uniqueId } = req.params;
   const clerkId = req.auth?.userId;
   const ownerClerkId = "user_2tjQfte8BQov14RMeDEQVsLuxC8";
 
@@ -170,15 +173,20 @@ app.get("/api/episode/:id/recommendations", async (req, res) => {
   }
 
   try {
-    console.log(`🔄 Fetching recommendations for episode uniqueId: ${id}, clerkId: ${clerkId}`);
+    console.log(`🔄 Fetching recommendations for episode uniqueId: ${uniqueId}, clerkId: ${clerkId}`);
     // Decode the URL-encoded uniqueId to handle special characters (e.g., colons, slashes)
-    const decodedId = decodeURIComponent(id);
+    const decodedId = decodeURIComponent(uniqueId);
     console.log(`Decoded uniqueId: ${decodedId}`);
     
     let episode = await Episode.findOne({ uniqueId: decodedId });
     if (!episode) {
       console.warn(`❌ Episode not found for uniqueId: ${decodedId}`);
       return res.status(404).json({ error: "Episode not found" });
+    }
+
+    // Log episode details for debugging, especially for Matt and Shane's Secret Podcast
+    if (episode.feedUrl === "https://feeds.megaphone.fm/GLT1158789509") {
+      console.log(`🔍 Processing episode from Matt and Shane's Secret Podcast: ${episode.title}, uniqueId: ${decodedId}, audioUrl: ${episode.audioUrl}`);
     }
 
     if (episode.recommendations && episode.recommendations.summary && 
@@ -228,7 +236,7 @@ app.get("/api/episode/:id/recommendations", async (req, res) => {
 
     console.log(`⚙️ Generating new recommendations for episode: ${episode.title}`);
     if (!episode.audioUrl) {
-      console.warn(`⚠️ No audio URL for episode: ${episode.title}`);
+      console.warn(`⚠️ No audio URL for episode: ${episode.title} (feed: ${episode.feedUrl})`);
       return res.status(400).json({ error: "No audio URL available" });
     }
 
@@ -239,11 +247,11 @@ app.get("/api/episode/:id/recommendations", async (req, res) => {
       { uniqueId: decodedId },
       { $set: { recommendations: newRecommendations } }
     );
-    console.log(`✅ Saved recommendations for: ${episode.title}`);
+    console.log(`✅ Saved recommendations for: ${episode.title} (uniqueId: ${decodedId})`);
 
     res.json({ recommendations: newRecommendations });
   } catch (error) {
-    console.error("❌ Error in /api/episode/:id/recommendations:", error.stack);
+    console.error("❌ Error in /api/episode/:uniqueId/recommendations:", error.stack);
     res.status(500).json({ error: error.message || "Server error" });
   }
 });
@@ -277,19 +285,24 @@ app.get("/api/podcasts/raw", async (req, res) => {
 
   try {
     const feed = await parser.parseURL(feedUrl);
-    console.log(`✅ Successfully parsed RSS feed with ${feed.items.length} items`);
-    const episodes = feed.items.map(item => ({
-      title: item.title || "Untitled Episode",
-      pubDate: new Date(item.pubDate),
-      link: item.link || `https://fallback.example.com/${item.guid}`,
-      uniqueId: item.guid || `guid-${Math.random().toString(36).substr(2, 9)}`,
-      audioUrl: item.enclosure?.url || "",
-      feedUrl,
-    }));
+    console.log(`✅ Successfully parsed RSS feed with ${feed.items.length} items from ${feedUrl}`);
+    const episodes = feed.items.map(item => {
+      const uniqueId = item.guid || `guid-${Math.random().toString(36).substr(2, 9)}`;
+      const audioUrl = item.enclosure?.url || "";
+      console.log(`Parsed episode: ${item.title || "Untitled"}, uniqueId: ${uniqueId}, audioUrl: ${audioUrl}`);
+      return {
+        title: item.title || "Untitled Episode",
+        pubDate: new Date(item.pubDate),
+        link: item.link || `https://fallback.example.com/${uniqueId}`,
+        uniqueId,
+        audioUrl,
+        feedUrl,
+      };
+    });
     console.log(`✅ Returned ${episodes.length} raw episodes from RSS feed`);
     res.json(episodes.slice(0, 100));
   } catch (error) {
-    console.error("❌ Error in GET /api/podcasts/raw:", error.stack);
+    console.error("❌ Error in GET /api/podcasts/raw for feedUrl:", feedUrl, error.stack);
     res.status(500).json({ error: "Failed to fetch raw episodes from RSS feed" });
   }
 });
@@ -324,10 +337,10 @@ app.post("/api/podcasts/single", async (req, res) => {
       }
     );
 
-    console.log(`✅ Saved episode to MongoDB: ${updatedEpisode.uniqueId}`, updatedEpisode);
+    console.log(`✅ Saved episode to MongoDB: ${updatedEpisode.uniqueId} (feed: ${feedUrl})`, updatedEpisode);
     res.json(updatedEpisode);
   } catch (error) {
-    console.error("❌ Error in POST /api/podcasts/single:", error.stack);
+    console.error("❌ Error in POST /api/podcasts/single for uniqueId:", uniqueId, error.stack);
     res.status(500).json({ error: "Failed to save episode" });
   }
 });
@@ -354,15 +367,17 @@ app.post("/api/podcasts", async (req, res) => {
 
     for (const item of feed.items) {
       const link = item.link || `https://fallback.example.com/${item.guid}`;
-      console.log(`Processing episode: ${item.title} (uniqueId: ${item.guid})`);
+      const uniqueId = item.guid || `guid-${Math.random().toString(36).substr(2, 9)}`;
+      const audioUrl = item.enclosure?.url || "";
+      console.log(`Processing episode: ${item.title || "Untitled"} (uniqueId: ${uniqueId}, audioUrl: ${audioUrl})`);
       const updatedEpisode = await Episode.findOneAndUpdate(
-        { uniqueId: item.guid },
+        { uniqueId },
         {
           $set: {
             title: item.title || "Untitled Episode",
             pubDate: new Date(item.pubDate),
             link,
-            audioUrl: item.enclosure?.url || "",
+            audioUrl,
             feedUrl,
           },
           $setOnInsert: {
@@ -378,10 +393,10 @@ app.post("/api/podcasts", async (req, res) => {
       episodesFromFeed.push(updatedEpisode);
     }
 
-    console.log(`✅ Processed ${episodesFromFeed.length} episodes from RSS feed`);
+    console.log(`✅ Processed ${episodesFromFeed.length} episodes from RSS feed: ${feedUrl}`);
     res.json(episodesFromFeed);
   } catch (error) {
-    console.error("❌ Error in POST /api/podcasts:", error.stack);
+    console.error("❌ Error in POST /api/podcasts for feedUrl:", feedUrl, error.stack);
     res.status(500).json({ error: "Failed to fetch episodes from RSS feed" });
   }
 });

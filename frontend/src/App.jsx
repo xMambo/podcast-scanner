@@ -142,7 +142,7 @@ function App() {
       setFilteredEpisodes(data || []);
       setProgressStatus("");
     } catch (err) {
-      console.error("❌ Error fetching raw episodes from API:", err);
+      console.error("❌ Error fetching raw episodes from API for feedUrl:", feedUrl, err);
       setError(err.message || "Failed to fetch episodes. Please try again.");
       setProgressStatus("");
     } finally {
@@ -230,8 +230,11 @@ function App() {
       const savedEpisode = await saveResponse.json();
       console.log("Episode saved:", savedEpisode);
 
+      const encodedId = encodeURIComponent(episodeId);
+      console.log(`Encoded uniqueId for API call: ${encodedId}`);
+
       const recResponse = await fetch(
-        `${API_BASE_URL}/api/episode/${episodeId}/recommendations`,
+        `${API_BASE_URL}/api/episode/${encodedId}/recommendations`,
         {
           headers: {
             "Authorization": `Bearer ${token}`,
@@ -240,10 +243,19 @@ function App() {
       );
       if (!recResponse.ok) {
         const errorData = await recResponse.json();
-        throw new Error(errorData.error || `HTTP error! Status: ${recResponse.status}`);
+        if (recResponse.status === 404) {
+          console.warn(`⚠️ Recommendations not found for episode ${episodeId} from feed ${rssFeedUrl}. Skipping.`);
+          setProgressStatus("No recommendations available for this episode.");
+          setRecommendations((prev) => ({ ...prev, [episodeId]: { summary: "", books: [], media: [] } }));
+        } else if (recResponse.status === 429) {
+          throw new Error("Daily 'Get Recs' limit reached. Try again tomorrow.");
+        } else {
+          throw new Error(errorData.error || `HTTP error! Status: ${recResponse.status}`);
+        }
+        return; // Exit early if 404 or other non-200 status
       }
       const data = await recResponse.json();
-      console.log(`📢 Fetched recommendations for episode ID: ${episodeId}`, data);
+      console.log(`📢 Fetched recommendations for episode ID: ${encodedId}`, data);
 
       if (data.recommendations) {
         const { summary, books, media } = data.recommendations;
