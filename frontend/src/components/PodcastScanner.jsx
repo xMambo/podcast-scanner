@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react"; // Added useCallback for optimization
+import { useState, useEffect, useCallback } from "react";
 import {
   Container,
   Button,
@@ -15,13 +15,13 @@ import {
 } from "react-bootstrap";
 import { UserButton, useUser, useAuth } from "@clerk/clerk-react";
 import PodcastSearch from "./PodcastSearch";
-import "./PodcastScanner.css"; // CSS for custom play button
+import "./PodcastScanner.css";
 
 const API_BASE_URL = "https://podcast-scanner.onrender.com";
 
 function PodcastScanner() {
-  const [episodes, setEpisodes] = useState([]); // All fetched episodes (full RSS feed) in memory
-  const [filteredEpisodes, setFilteredEpisodes] = useState([]); // Filtered episodes for display (all, not just page)
+  const [episodes, setEpisodes] = useState([]);
+  const [filteredEpisodes, setFilteredEpisodes] = useState([]);
   const [selectedPodcast, setSelectedPodcast] = useState(null);
   const [rssFeedUrl, setRssFeedUrl] = useState("");
   const [recentFeeds, setRecentFeeds] = useState([]);
@@ -31,9 +31,9 @@ function PodcastScanner() {
   const [expandedEpisodes, setExpandedEpisodes] = useState({});
   const [error, setError] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [playingAudio, setPlayingAudio] = useState(null); // State for current playing audio
-  const [currentPage, setCurrentPage] = useState(1); // For pagination
-  const [searchKeywords, setSearchKeywords] = useState(""); // For episode content (keywords) search
+  const [playingAudio, setPlayingAudio] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [searchKeywords, setSearchKeywords] = useState("");
 
   const EPISODES_PER_PAGE = 20;
 
@@ -96,10 +96,10 @@ function PodcastScanner() {
 
   const handlePodcastSelect = (podcast) => {
     console.log("Podcast object from search:", podcast);
-    setSelectedPodcast(podcast); // Ensure selectedPodcast is set to prevent disappearance
+    setSelectedPodcast(podcast);
     if (podcast.feedUrl) {
-      setRssFeedUrl(podcast.feedUrl); // Update rssFeedUrl to match the selected podcast
-      setSearchKeywords(""); // Reset keywords search
+      setRssFeedUrl(podcast.feedUrl);
+      setSearchKeywords("");
       fetchEpisodes(podcast.feedUrl);
       setRecentFeeds((prev) => {
         const newFeed = {
@@ -138,13 +138,13 @@ function PodcastScanner() {
 
       const data = await response.json();
       console.log("Received raw data from API:", data);
-      setEpisodes(data || []); // Store raw episodes in memory
-      setFilteredEpisodes(data || []); // Set filtered episodes to all episodes initially
-      setProgressStatus(""); // Clear progress message
+      setEpisodes(data || []);
+      setFilteredEpisodes(data || []);
+      setProgressStatus("");
     } catch (err) {
       console.error("❌ Error fetching raw episodes from API:", err);
       setError(err.message || "Failed to fetch episodes. Please try again.");
-      setProgressStatus(""); // Clear progress message
+      setProgressStatus("");
     } finally {
       setIsLoading(false);
     }
@@ -154,9 +154,9 @@ function PodcastScanner() {
     console.log("Recent feed clicked, feedUrl:", feedUrl);
     const selectedFeed = recentFeeds.find((feed) => feed.feedUrl === feedUrl);
     if (selectedFeed) {
-      setSelectedPodcast(selectedFeed); // Set selectedPodcast from recent feed data
-      setRssFeedUrl(feedUrl); // Update rssFeedUrl to match the selected recent feed
-      setSearchKeywords(""); // Reset keywords search
+      setSelectedPodcast(selectedFeed);
+      setRssFeedUrl(feedUrl);
+      setSearchKeywords("");
       fetchEpisodes(feedUrl);
     } else {
       console.warn("❌ No matching feed found for feedUrl:", feedUrl);
@@ -164,38 +164,34 @@ function PodcastScanner() {
     }
   };
 
-  // Handle keywords search (title and summary) for entire RSS feed in memory
   const handleKeywordsSearch = (e) => {
     const value = e.target.value;
     console.log("Keywords search value (entire list):", value);
     setSearchKeywords(value);
-    filterEpisodes(); // Filter all episodes in memory
+    filterEpisodes();
   };
 
-  // Filter episodes based on keywords search (entire RSS feed in memory) with enhanced matching
   const filterEpisodes = useCallback(() => {
-    let filtered = [...episodes]; // Start with all episodes from RSS feed in memory
+    let filtered = [...episodes];
 
     if (searchKeywords.trim()) {
-      const lowerCaseKeywords = searchKeywords.toLowerCase().split(/\s+/).filter(Boolean); // Split by whitespace, remove empty
+      const lowerCaseKeywords = searchKeywords.toLowerCase().split(/\s+/).filter(Boolean);
       filtered = filtered.filter(episode => {
         const title = episode.title?.toLowerCase() || "";
         const summary = episode.recommendations?.summary?.toLowerCase() || "";
-
-        // Check if any keyword matches title or summary
         return lowerCaseKeywords.some(keyword =>
           title.includes(keyword) || summary.includes(keyword)
         );
       });
     }
 
-    console.log("Filtered episodes (entire list):", filtered.map(ep => ep.title)); // Log titles for debugging
-    setFilteredEpisodes(filtered); // Update filteredEpisodes with all matching episodes
-    setCurrentPage(1); // Reset to first page on new search
-  }, [episodes, searchKeywords]); // Memoize with dependencies
+    console.log("Filtered episodes (entire list):", filtered.map(ep => ep.title));
+    setFilteredEpisodes(filtered);
+    setCurrentPage(1);
+  }, [episodes, searchKeywords]);
 
   const handleGetRecs = async (episode) => {
-    const episodeId = episode.uniqueId; // Use uniqueId for consistency
+    const episodeId = episode.uniqueId;
     if (!episode || !episodeId) {
       console.error("❌ Invalid episode or missing uniqueId:", episode);
       setProgressStatus("Invalid episode data.");
@@ -204,7 +200,6 @@ function PodcastScanner() {
 
     setExpandedEpisodes((prev) => ({ ...prev, [episodeId]: !prev[episodeId] }));
 
-    // Check if recommendations already exist in state and are complete
     if (
       recommendations[episodeId]?.summary &&
       (recommendations[episodeId]?.books?.length > 0 || recommendations[episodeId]?.media?.length > 0)
@@ -214,13 +209,14 @@ function PodcastScanner() {
     }
 
     setLoadingRecs((prev) => ({ ...prev, [episodeId]: true }));
-    setProgressStatus("Fetching recommendations...");
+    setProgressStatus("Saving episode and fetching recommendations...");
 
     try {
       const token = await getToken();
+      console.log("Token for request:", token); // Log token for debugging
 
-      // Save the episode to MongoDB if not already present
-      await fetch(`${API_BASE_URL}/api/podcasts/single`, {
+      // Save the episode and check response
+      const saveResponse = await fetch(`${API_BASE_URL}/api/podcasts/single`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -228,8 +224,15 @@ function PodcastScanner() {
         },
         body: JSON.stringify({ ...episode, feedUrl: rssFeedUrl }),
       });
+      if (!saveResponse.ok) {
+        const errorData = await saveResponse.json();
+        throw new Error(`Failed to save episode: ${errorData.error || saveResponse.statusText}`);
+      }
+      const savedEpisode = await saveResponse.json();
+      console.log("Episode saved:", savedEpisode);
 
-      const response = await fetch(
+      // Fetch recommendations
+      const recResponse = await fetch(
         `${API_BASE_URL}/api/episode/${episodeId}/recommendations`,
         {
           headers: {
@@ -237,13 +240,11 @@ function PodcastScanner() {
           },
         }
       );
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `HTTP error! Status: ${response.status}`);
+      if (!recResponse.ok) {
+        const errorData = await recResponse.json();
+        throw new Error(errorData.error || `HTTP error! Status: ${recResponse.status}`);
       }
-
-      const data = await response.json();
+      const data = await recResponse.json();
       console.log(`📢 Fetched recommendations for episode ID: ${episodeId}`, data);
 
       if (data.recommendations) {
@@ -260,24 +261,22 @@ function PodcastScanner() {
         setProgressStatus("No recommendations available.");
       }
     } catch (error) {
-      console.error("❌ Error fetching recommendations:", error);
+      console.error("❌ Error in handleGetRecs:", error);
       setProgressStatus(`Error: ${error.message}`);
     } finally {
       setLoadingRecs((prev) => ({ ...prev, [episodeId]: false }));
     }
   };
 
-  // Function to handle audio playback
   const handlePlayAudio = (episode) => {
     const audioUrl = episode.audioUrl;
     if (!audioUrl) {
       setError("No audio URL available for this episode.");
       return;
     }
-    setPlayingAudio(audioUrl === playingAudio ? null : audioUrl); // Toggle playback
+    setPlayingAudio(audioUrl === playingAudio ? null : audioUrl);
   };
 
-  // Pagination logic
   const indexOfLastEpisode = currentPage * EPISODES_PER_PAGE;
   const indexOfFirstEpisode = indexOfLastEpisode - EPISODES_PER_PAGE;
   const currentEpisodes = filteredEpisodes.slice(indexOfFirstEpisode, indexOfLastEpisode);
@@ -296,7 +295,7 @@ function PodcastScanner() {
       <h1 className="text-center mb-4">Podcast Scanner</h1>
       <PodcastSearch onPodcastSelect={handlePodcastSelect} />
 
-      {recentFeeds.length > 0 && ( // Ensure Recently Searched Feeds are above the podcast card
+      {recentFeeds.length > 0 && (
         <div className="my-3">
           <h5>Recently Searched Feeds:</h5>
           <div>
@@ -317,7 +316,7 @@ function PodcastScanner() {
         </div>
       )}
 
-      {selectedPodcast && ( // Ensure podcast card renders consistently
+      {selectedPodcast && (
         <Card className="text-center my-4">
           <Card.Body>
             <Card.Title>{selectedPodcast.collectionName}</Card.Title>
@@ -336,7 +335,7 @@ function PodcastScanner() {
 
       <Form className="mb-3">
         <Row>
-          <Col md={4}> {/* Smaller width for keyword search */}
+          <Col md={4}>
             <Form.Group controlId="keywordsSearch">
               <Form.Control
                 type="text"
@@ -344,7 +343,7 @@ function PodcastScanner() {
                 value={searchKeywords}
                 onChange={handleKeywordsSearch}
                 onKeyPress={(e) => e.key === 'Enter' && handleKeywordsSearch({ target: { value: searchKeywords } })}
-                style={{ fontSize: "0.9rem" }} // Make it slightly smaller visually
+                style={{ fontSize: "0.9rem" }}
               />
             </Form.Group>
           </Col>
@@ -361,7 +360,7 @@ function PodcastScanner() {
       )}
       <ListGroup className="mb-4">
         {currentEpisodes.map((episode, index) => {
-          const episodeId = episode.uniqueId; // Use uniqueId for consistency
+          const episodeId = episode.uniqueId;
           const isExpanded = expandedEpisodes[episodeId];
           const isLoadingRec = loadingRecs[episodeId];
 
@@ -441,7 +440,6 @@ function PodcastScanner() {
                 </div>
               </Collapse>
 
-              {/* Audio Player (Simple HTML Audio) */}
               {playingAudio === episode.audioUrl && (
                 <audio
                   controls
@@ -459,7 +457,6 @@ function PodcastScanner() {
         })}
       </ListGroup>
 
-      {/* Pagination */}
       {filteredEpisodes.length > EPISODES_PER_PAGE && (
         <Pagination className="justify-content-center">
           <Pagination.Prev
