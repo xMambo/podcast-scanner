@@ -231,9 +231,13 @@ function PodcastScanner() {
       const savedEpisode = await saveResponse.json();
       console.log("Episode saved:", savedEpisode);
 
-      // Fetch recommendations
+      // Encode the uniqueId to handle special characters in the URL
+      const encodedId = encodeURIComponent(episodeId);
+      console.log(`Encoded uniqueId for API call: ${encodedId}`);
+
+      // Fetch recommendations with the encoded uniqueId
       const recResponse = await fetch(
-        `${API_BASE_URL}/api/episode/${episodeId}/recommendations`,
+        `${API_BASE_URL}/api/episode/${encodedId}/recommendations`,
         {
           headers: {
             "Authorization": `Bearer ${token}`,
@@ -245,7 +249,7 @@ function PodcastScanner() {
         throw new Error(errorData.error || `HTTP error! Status: ${recResponse.status}`);
       }
       const data = await recResponse.json();
-      console.log(`📢 Fetched recommendations for episode ID: ${episodeId}`, data);
+      console.log(`📢 Fetched recommendations for episode ID: ${encodedId}`, data);
 
       if (data.recommendations) {
         const { summary, books, media } = data.recommendations;

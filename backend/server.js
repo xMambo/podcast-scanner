@@ -171,9 +171,13 @@ app.get("/api/episode/:id/recommendations", async (req, res) => {
 
   try {
     console.log(`🔄 Fetching recommendations for episode uniqueId: ${id}, clerkId: ${clerkId}`);
-    let episode = await Episode.findOne({ uniqueId: id });
+    // Decode the URL-encoded uniqueId to handle special characters (e.g., colons, slashes)
+    const decodedId = decodeURIComponent(id);
+    console.log(`Decoded uniqueId: ${decodedId}`);
+    
+    let episode = await Episode.findOne({ uniqueId: decodedId });
     if (!episode) {
-      console.warn(`❌ Episode not found for uniqueId: ${id}`);
+      console.warn(`❌ Episode not found for uniqueId: ${decodedId}`);
       return res.status(404).json({ error: "Episode not found" });
     }
 
@@ -232,7 +236,7 @@ app.get("/api/episode/:id/recommendations", async (req, res) => {
     const newRecommendations = await extractRecommendations(transcription, episode.title);
 
     await Episode.updateOne(
-      { uniqueId: id },
+      { uniqueId: decodedId },
       { $set: { recommendations: newRecommendations } }
     );
     console.log(`✅ Saved recommendations for: ${episode.title}`);
