@@ -14,7 +14,7 @@ import {
   Pagination,
 } from "react-bootstrap";
 import { UserButton, useUser, useAuth } from "@clerk/clerk-react";
-import PodcastSearch from "../components/PodcastSearch"; // Fixed path: "../components/PodcastSearch"
+import PodcastSearch from "./components/PodcastSearch"; // Fixed path: "../components/PodcastSearch"
 import "../PodcastScanner.css"; // Adjusted path assuming CSS is in src/
 
 const API_BASE_URL = "https://podcast-scanner.onrender.com";
