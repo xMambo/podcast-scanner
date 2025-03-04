@@ -14,12 +14,12 @@ import {
   Pagination,
 } from "react-bootstrap";
 import { UserButton, useUser, useAuth } from "@clerk/clerk-react";
-import PodcastSearch from "./PodcastSearch";
-import "./PodcastScanner.css";
+import PodcastSearch from "../components/PodcastSearch"; // Fixed path: "../components/PodcastSearch"
+import "../PodcastScanner.css"; // Adjusted path assuming CSS is in src/
 
 const API_BASE_URL = "https://podcast-scanner.onrender.com";
 
-function PodcastScanner() {
+function App() {
   const [episodes, setEpisodes] = useState([]);
   const [filteredEpisodes, setFilteredEpisodes] = useState([]);
   const [selectedPodcast, setSelectedPodcast] = useState(null);
@@ -213,9 +213,8 @@ function PodcastScanner() {
 
     try {
       const token = await getToken();
-      console.log("Token for request:", token); // Log token for debugging
+      console.log("Token for request:", token);
 
-      // Save the episode and check response
       const saveResponse = await fetch(`${API_BASE_URL}/api/podcasts/single`, {
         method: "POST",
         headers: {
@@ -231,7 +230,6 @@ function PodcastScanner() {
       const savedEpisode = await saveResponse.json();
       console.log("Episode saved:", savedEpisode);
 
-      // Fetch recommendations
       const recResponse = await fetch(
         `${API_BASE_URL}/api/episode/${episodeId}/recommendations`,
         {
@@ -482,4 +480,4 @@ function PodcastScanner() {
   );
 }
 
-export default PodcastScanner;
+export default App;
