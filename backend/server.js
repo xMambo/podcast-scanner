@@ -9,13 +9,15 @@ import axios from "axios";
 import saveUserRouter from "./api/saveUser.js";
 import OpenAI from "openai";
 import { ClerkExpressWithAuth } from "@clerk/clerk-sdk-node";
-import { v4 as uuidv4 } from "uuid"; // Added for consistent uniqueId generation
+import { v4 as uuidv4 } from "uuid";
+import NodeCache from "node-cache"; // For temporary caching of transcriptions
 
 dotenv.config();
 
 const app = express();
 const parser = new RSSParser();
 const openAI = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const cache = new NodeCache({ stdTTL: 1800 }); // Cache transcriptions for 30 minutes (adjust as needed)
 
 app.use(cors({
   origin: (origin, callback) => {
@@ -49,6 +51,7 @@ app.get("/", (req, res) => {
 });
 
 // Transcribe audio using AssemblyAI, defaulting to Nano model with Best fallback
+// Transcriptions are cached temporarily in node-cache (30 minutes) instead of MongoDB
 async function transcribeAudio(audioUrl, useNano = true) {
   const assemblyApiKey = process.env.ASSEMBLYAI_API_KEY;
   if (!assemblyApiKey) {
@@ -56,16 +59,20 @@ async function transcribeAudio(audioUrl, useNano = true) {
   }
 
   console.log(`🎤 Sending audio to AssemblyAI for transcription: ${audioUrl} (Model: ${useNano ? "Nano" : "Best"})`);
-  const config = {
-    audio_url: audioUrl,
-    speech_model: useNano ? "nano" : "best",
-  };
+  const cacheKey = `transcription:${audioUrl}`;
+  const cachedTranscription = cache.get(cacheKey);
+  if (cachedTranscription) {
+    console.log(`✅ Using cached transcription for audioUrl: ${audioUrl}`);
+    return cachedTranscription;
+  }
+
+  const config = { audio_url: audioUrl, speech_model: useNano ? "nano" : "best" };
 
   try {
     const transcriptResponse = await axios.post(
       "https://api.assemblyai.com/v2/transcript",
       config,
-      { headers: { authorization: assemblyApiKey }, timeout: 30000 } // 30-second timeout
+      { headers: { authorization: assemblyApiKey }, timeout: 30000 }
     );
 
     const transcriptId = transcriptResponse.data.id;
@@ -80,8 +87,10 @@ async function transcribeAudio(audioUrl, useNano = true) {
 
       const status = pollingResponse.data.status;
       if (status === "completed") {
+        const transcription = pollingResponse.data.text;
         console.log(`✅ Transcription completed for ${transcriptId} (Model: ${useNano ? "Nano" : "Best"})`);
-        return pollingResponse.data.text;
+        cache.set(cacheKey, transcription); // Cache for 30 minutes
+        return transcription;
       } else if (status === "error") {
         console.error(`❌ Transcription error: ${pollingResponse.data.error}`);
         if (useNano) {
@@ -109,6 +118,13 @@ async function extractRecommendations(transcript, title) {
 
   console.log(`📌 Extracting recommendations from transcription (length: ${transcript.length} chars)`);
 
+  const cacheKey = `recommendations:${title}:${transcript.substring(0, 100)}`;
+  const cachedRecommendations = cache.get(cacheKey);
+  if (cachedRecommendations) {
+    console.log(`✅ Using cached recommendations for title: ${title}`);
+    return cachedRecommendations;
+  }
+
   const prompt = `
     You are an expert analyst tasked with extracting detailed insights from a podcast episode titled "${title}". Analyze the entire following transcript and provide:
     - A 2-5 sentence **summary** that captures the main topics, specific issues, arguments, or perspectives discussed, avoiding vague phrases like "explores related topics." **Exclude any content related to advertisements, sponsor messages, or product promotions (e.g., "This episode is brought to you by...", mentions of specific products or services for sale, or promotional segues unrelated to the core discussion). Focus only on the substantive conversation.**
@@ -116,11 +132,15 @@ async function extractRecommendations(transcript, title) {
       - The **title**.
       - A detailed **description** (up to 5 sentences) summarizing its content and relevance.
       - **Context** (up to 5 sentences) explaining why the book was brought up in the episode, including the speaker, discussion topic, and any specific quotes or reasons given.
-    - A comprehensive list of **movies**, **films**, **documentaries**, and **TV shows** that are explicitly mentioned, referenced, implied, or discussed in any context in the transcript, with no cap on the number. For each item, include:
+    - A comprehensive list of **movies** that are explicitly mentioned, referenced, implied, or discussed in any context in the transcript, with no cap on the number. For each movie, include:
+      - The **title**.
+      - A detailed **description** (up to 5 sentences) summarizing its content and relevance.
+      - **Context** (up to 5 sentences) explaining why the movie was brought up in the episode, including the speaker, discussion topic, and any specific quotes or reasons given.
+    - A comprehensive list of **TV shows**, **films**, and **documentaries** (e.g., "Mary Tyler Moore") that are explicitly mentioned, referenced, implied, or discussed in any context in the transcript, with no cap on the number. For each item, include:
       - The **title**.
       - A detailed **description** (up to 5 sentences) summarizing its content and relevance.
       - **Context** (up to 5 sentences) explaining why the item was brought up in the episode, including the speaker, discussion topic, and any specific quotes or reasons given, even if mentioned casually or as an example (e.g., cultural references, trivia, or recent releases like a Bob Dylan movie or "Indiana Jones").
-    Respond in strict, valid JSON format with fields: "summary" (string), "books" (array of {title, description, context}), and "movies" (array of {title, description, context} for movies, films, documentaries, and TV shows).
+    Respond in strict, valid JSON format with fields: "summary" (string), "books" (array of {title, description, context}), "movies" (array of {title, description, context}), and "media" (array of {title, description, context} for TV shows, films, documentaries).
 
     Transcript:
     "${transcript.substring(0, 24000)}" (first 24000 characters provided to capture more media references, adjust if needed)
@@ -151,12 +171,13 @@ async function extractRecommendations(transcript, title) {
       throw new Error(`Invalid JSON response from OpenAI: ${parseError.message}`);
     }
 
-    if (!recommendations.summary || !Array.isArray(recommendations.books) || !Array.isArray(recommendations.movies)) {
+    if (!recommendations.summary || !Array.isArray(recommendations.books) || !Array.isArray(recommendations.movies) || !Array.isArray(recommendations.media)) {
       console.warn("⚠️ Partial or invalid recommendations, using defaults");
-      recommendations = { summary: "", books: [], movies: [] };
+      recommendations = { summary: "", books: [], movies: [], media: [] };
     }
 
     console.log(`✅ Extracted detailed recommendations:`, recommendations);
+    cache.set(cacheKey, recommendations); // Cache recommendations for 30 minutes
     return recommendations;
   } catch (error) {
     console.error(`❌ OpenAI extraction error:`, error.stack, "Raw content:", content || "No content returned");
@@ -164,24 +185,21 @@ async function extractRecommendations(transcript, title) {
   }
 }
 
-// Helper to reset daily count if new day
+// Helper to reset daily count and API calls if new day
 const resetDailyCountIfNeeded = (user) => {
   const today = new Date().setHours(0, 0, 0, 0);
   const usageDate = new Date(user.recsUsage.date).setHours(0, 0, 0, 0);
   if (today > usageDate) {
     console.log(`Resetting recsUsage for user ${user.clerkId} - new day`);
-    user.recsUsage.date = new Date();
-    user.recsUsage.count = 0;
+    user.recsUsage = { date: new Date(), count: 0, apiCalls: 0 }; // Track API calls
+    return user;
   }
   return user;
 };
 
 // Fetch and generate recommendations with rate limiting
 app.get("/api/episode/:uniqueId/recommendations", async (req, res) => {
-  console.log(
-    "GET /api/episode/:uniqueId/recommendations - Request headers:",
-    req.headers
-  );
+  console.log("GET /api/episode/:uniqueId/recommendations - Request headers:", req.headers);
   console.log("Request auth:", req.auth); // Log Clerk auth for debugging
   const { uniqueId } = req.params;
   const clerkId = req.auth?.userId;
@@ -194,98 +212,90 @@ app.get("/api/episode/:uniqueId/recommendations", async (req, res) => {
 
   try {
     console.log(`🔄 Fetching recommendations for episode uniqueId: ${uniqueId}, clerkId: ${clerkId}`);
-    // Decode the URL-encoded uniqueId to handle special characters
     const decodedId = decodeURIComponent(uniqueId);
     console.log(`Decoded uniqueId: ${decodedId}`);
 
-    // Ensure uniqueId matches the expected format (tag:audioboom.com,... or UUID)
-    if (!decodedId.startsWith("tag:audioboom.com") && !decodedId.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
-      console.warn(`⚠️ Invalid uniqueId format: ${decodedId}, attempting to normalize`);
-      // Try to normalize or fallback to UUID if needed
-      const normalizedId = decodedId.replace(/[^a-zA-Z0-9-]/g, "-").toLowerCase();
-      const episode = await Episode.findOne({ uniqueId: normalizedId });
-      if (!episode) {
-        console.warn(`❌ Episode not found for normalized uniqueId: ${normalizedId}`);
-        return res.status(404).json({ error: "Episode not found" });
-      }
-    } else {
-      let episode = await Episode.findOne({ uniqueId: decodedId });
-      if (!episode) {
-        console.warn(`❌ Episode not found for uniqueId: ${decodedId}`);
-        return res.status(404).json({ error: "Episode not found" });
-      }
+    let episode = await Episode.findOne({ uniqueId: decodedId });
+    if (!episode) {
+      console.warn(`❌ Episode not found for uniqueId: ${decodedId}`);
+      return res.status(404).json({ error: "Episode not found" });
+    }
 
-      console.log(`🔍 Processing episode: ${episode.title}, uniqueId: ${decodedId}, audioUrl: ${episode.audioUrl}`);
+    console.log(`🔍 Processing episode: ${episode.title}, uniqueId: ${decodedId}, audioUrl: ${episode.audioUrl}`);
 
-      if (episode.recommendations && episode.recommendations.summary && 
-          (episode.recommendations.books.length > 0 || episode.recommendations.movies.length > 0)) {
-        console.log(`✅ Returning existing recommendations for episode: ${episode.title}`);
-        return res.json({ recommendations: episode.recommendations });
-      }
+    // Return existing recommendations if any data exists, even if empty
+    if (episode.recommendations) {
+      console.log(`✅ Returning existing recommendations (even if empty) for episode: ${episode.title}`);
+      return res.json({ recommendations: episode.recommendations });
+    }
 
-      if (clerkId !== ownerClerkId) {
-        let user = await User.findOne({ clerkId });
-        if (!user) {
-          console.log(`Creating new user for clerkId: ${clerkId}`);
-          user = await User.findOneAndUpdate(
-            { clerkId },
-            {
-              $setOnInsert: {
-                clerkId,
-                fullName: "Guest",
-                email: `${clerkId}@guest.com`,
-                recsUsage: { date: new Date(), count: 0 },
-                recentFeeds: [],
-              },
-            },
-            { upsert: true, new: true }
-          );
-        }
-
-        resetDailyCountIfNeeded(user);
-
-        if (user.recsUsage.count >= 5) {
-          console.log(`❌ User ${clerkId} exceeded 5 recs/day limit`);
-          return res.status(429).json({ error: "Daily 'Get Recs' limit of 5 reached" });
-        }
-
-        const updatedUser = await User.findOneAndUpdate(
+    if (clerkId !== ownerClerkId) {
+      let user = await User.findOne({ clerkId });
+      if (!user) {
+        console.log(`Creating new user for clerkId: ${clerkId}`);
+        user = await User.findOneAndUpdate(
           { clerkId },
           {
-            $inc: { "recsUsage.count": 1 },
-            $set: { "recsUsage.date": user.recsUsage.date },
+            $setOnInsert: {
+              clerkId,
+              fullName: "Guest",
+              email: `${clerkId}@guest.com`,
+              recsUsage: { date: new Date(), count: 0, apiCalls: 0 },
+              recentFeeds: [],
+            },
           },
-          { new: true }
+          { upsert: true, new: true }
         );
-        console.log(`Updated recsUsage for ${clerkId}: ${updatedUser.recsUsage.count}`);
-      } else {
-        console.log(`Skipping rate limit for owner clerkId: ${clerkId}`);
       }
 
-      console.log(`⚙️ Generating new recommendations for episode: ${episode.title}`);
-      if (!episode.audioUrl) {
-        console.warn(`⚠️ No audio URL for episode: ${episode.title} (feed: ${episode.feedUrl})`);
-        return res.status(400).json({ error: "No audio URL available" });
+      resetDailyCountIfNeeded(user);
+
+      if (user.recsUsage.count >= 5 || user.recsUsage.apiCalls >= 10) { // Limit API calls
+        console.log(`❌ User ${clerkId} exceeded limits (recs: ${user.recsUsage.count}, apiCalls: ${user.recsUsage.apiCalls})`);
+        return res.status(429).json({ error: "Daily 'Get Recs' or API call limit reached. Try again tomorrow." });
       }
 
-      const transcription = await transcribeAudio(episode.audioUrl, true);
-      const newRecommendations = await extractRecommendations(transcription, episode.title);
-
-      await Episode.updateOne(
-        { uniqueId: decodedId },
-        { $set: { recommendations: newRecommendations } }
+      const updatedUser = await User.findOneAndUpdate(
+        { clerkId },
+        {
+          $inc: { "recsUsage.count": 1, "recsUsage.apiCalls": 1 },
+          $set: { "recsUsage.date": user.recsUsage.date },
+        },
+        { new: true }
       );
-      console.log(`✅ Saved recommendations for: ${episode.title} (uniqueId: ${decodedId})`);
-
-      res.json({ recommendations: newRecommendations });
+      console.log(`Updated recsUsage for ${clerkId}: recs=${updatedUser.recsUsage.count}, apiCalls=${updatedUser.recsUsage.apiCalls}`);
+    } else {
+      console.log(`Skipping rate limit for owner clerkId: ${clerkId}`);
     }
+
+    console.log(`⚙️ Generating new recommendations for episode: ${episode.title}`);
+    if (!episode.audioUrl) {
+      console.warn(`⚠️ No audio URL for episode: ${episode.title} (feed: ${episode.feedUrl})`);
+      return res.status(400).json({ error: "No audio URL available" });
+    }
+
+    const transcription = await transcribeAudio(episode.audioUrl, true);
+    const newRecommendations = await extractRecommendations(transcription, episode.title);
+
+    await Episode.updateOne(
+      { uniqueId: decodedId },
+      { $set: { recommendations: newRecommendations } }
+    );
+    console.log(`✅ Saved recommendations for: ${episode.title} (uniqueId: ${decodedId})`);
+
+    res.json({ recommendations: newRecommendations });
   } catch (error) {
     console.error("❌ Error in /api/episode/:uniqueId/recommendations:", error.stack);
+    if (error.message.includes("Failed to transcribe")) {
+      console.warn(`⚠️ Using default recommendations due to transcription failure for ${episode?.title || decodedId}`);
+      await Episode.updateOne({ uniqueId: decodedId }, { $set: { recommendations: { summary: "", books: [], movies: [], media: [] } } });
+      return res.json({ recommendations: { summary: "", books: [], movies: [], media: [] } });
+    }
     res.status(500).json({ error: error.message || "Server error" });
   }
 });
 
-// Fetch episodes from MongoDB (updated to handle uniqueId mismatch)
+// Fetch episodes from MongoDB
 app.get("/api/podcasts", async (req, res) => {
   console.log("GET /api/podcasts - Request query:", req.query);
   const { feedUrl } = req.query;
@@ -316,7 +326,7 @@ app.get("/api/podcasts/raw", async (req, res) => {
     const feed = await parser.parseURL(feedUrl);
     console.log(`✅ Successfully parsed RSS feed with ${feed.items.length} items from ${feedUrl}`);
     const episodes = feed.items.map(item => {
-      const uniqueId = item.guid || `tag:${feedUrl},${new Date().toISOString().split('T')[0]}:/posts/${Math.random().toString(36).substr(2, 9)}`;
+      const uniqueId = item.guid || `tag:${feedUrl},${new Date().toISOString().split('T')[0]}:/posts/${uuidv4().split('-')[0]}`;
       const audioUrl = item.enclosure?.url || "";
       console.log(`Parsed episode: ${item.title || "Untitled"}, uniqueId: ${uniqueId}, audioUrl: ${audioUrl}`);
       return {
@@ -336,7 +346,7 @@ app.get("/api/podcasts/raw", async (req, res) => {
   }
 });
 
-// Save a single episode to MongoDB
+// Save a single episode to MongoDB (skip if no changes)
 app.post("/api/podcasts/single", async (req, res) => {
   console.log("POST /api/podcasts/single - Request body:", req.body);
   const { title, pubDate, link, uniqueId, audioUrl, feedUrl } = req.body;
@@ -346,6 +356,21 @@ app.post("/api/podcasts/single", async (req, res) => {
   }
 
   try {
+    // Check if episode exists and has no changes
+    const existingEpisode = await Episode.findOne({ uniqueId });
+    if (existingEpisode) {
+      console.log(`✅ Episode already exists: ${uniqueId}, checking for updates`);
+      const hasChanges = title !== existingEpisode.title || 
+                        new Date(pubDate).getTime() !== existingEpisode.pubDate.getTime() || 
+                        link !== existingEpisode.link || 
+                        audioUrl !== existingEpisode.audioUrl || 
+                        feedUrl !== existingEpisode.feedUrl;
+      if (!hasChanges) {
+        console.log(`✅ No changes needed for episode: ${uniqueId}`);
+        return res.json(existingEpisode);
+      }
+    }
+
     const updatedEpisode = await Episode.findOneAndUpdate(
       { uniqueId },
       {
@@ -357,7 +382,7 @@ app.post("/api/podcasts/single", async (req, res) => {
           feedUrl,
         },
         $setOnInsert: {
-          recommendations: { summary: "", books: [], movies: [] },
+          recommendations: { summary: "", books: [], movies: [], media: [] },
         },
       },
       {
@@ -366,15 +391,7 @@ app.post("/api/podcasts/single", async (req, res) => {
       }
     );
 
-    // Migrate recommendations if media exists (one-time fix for schema drift)
-    if (updatedEpisode.recommendations && updatedEpisode.recommendations.media) {
-      updatedEpisode.recommendations.movies = updatedEpisode.recommendations.media;
-      delete updatedEpisode.recommendations.media;
-      await updatedEpisode.save();
-      console.log(`✅ Migrated recommendations from media to movies for episode: ${updatedEpisode.uniqueId}`);
-    }
-
-    console.log(`✅ Saved episode to MongoDB: ${updatedEpisode.uniqueId} (feed: ${feedUrl})`, updatedEpisode);
+    console.log(`✅ Saved/updated episode to MongoDB: ${updatedEpisode.uniqueId} (feed: ${feedUrl})`, updatedEpisode);
     res.json(updatedEpisode);
   } catch (error) {
     console.error("❌ Error in POST /api/podcasts/single for uniqueId:", uniqueId, error.stack);
@@ -385,7 +402,7 @@ app.post("/api/podcasts/single", async (req, res) => {
         { uniqueId: newUniqueId },
         {
           $set: { title, pubDate: new Date(pubDate), link, audioUrl, feedUrl },
-          $setOnInsert: { recommendations: { summary: "", books: [], movies: [] } },
+          $setOnInsert: { recommendations: { summary: "", books: [], movies: [], media: [] } },
         },
         { upsert: true, new: true }
       );
@@ -432,7 +449,7 @@ app.post("/api/podcasts", async (req, res) => {
             feedUrl,
           },
           $setOnInsert: {
-            recommendations: { summary: "", books: [], movies: [] },
+            recommendations: { summary: "", books: [], movies: [], media: [] },
           },
         },
         {
@@ -440,14 +457,6 @@ app.post("/api/podcasts", async (req, res) => {
           new: true,
         }
       );
-
-      // Migrate recommendations if media exists
-      if (updatedEpisode.recommendations && updatedEpisode.recommendations.media) {
-        updatedEpisode.recommendations.movies = updatedEpisode.recommendations.media;
-        delete updatedEpisode.recommendations.media;
-        await updatedEpisode.save();
-        console.log(`✅ Migrated recommendations from media to movies for episode: ${updatedEpisode.uniqueId}`);
-      }
 
       episodesFromFeed.push(updatedEpisode);
     }
@@ -564,23 +573,18 @@ app.use((req, res) => {
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
 
-// One-time migration script for recommendations (run once, then remove)
-async function migrateRecommendations() {
+// Optional migration script to remove existing transcriptions (run once, then remove)
+async function removeTranscriptions() {
   try {
-    const episodes = await Episode.find();
-    for (const episode of episodes) {
-      if (episode.recommendations && episode.recommendations.media) {
-        episode.recommendations.movies = episode.recommendations.media;
-        delete episode.recommendations.media;
-        await episode.save();
-        console.log(`✅ Migrated recommendations from media to movies for episode: ${episode.uniqueId}`);
-      }
-    }
-    console.log("✅ Completed migration of recommendations");
+    const result = await Episode.updateMany(
+      { transcription: { $exists: true } },
+      { $unset: { transcription: 1 } }
+    );
+    console.log(`✅ Removed ${result.modifiedCount} transcription fields from episodes`);
   } catch (error) {
-    console.error("❌ Error during recommendations migration:", error.stack);
+    console.error("❌ Error removing transcriptions:", error.stack);
   }
 }
 
-// Uncomment and run locally to migrate, then comment out or remove
-// migrateRecommendations().then(() => console.log("Migration complete")).catch(console.error);
+// Uncomment to run migration locally, then comment out or remove
+// removeTranscriptions().then(() => console.log("Migration complete")).catch(console.error);

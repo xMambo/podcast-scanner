@@ -22,7 +22,14 @@ const episodeSchema = new mongoose.Schema(
           context: { type: String, maxlength: 500, trim: true },
         },
       ],
-      movies: [ // Changed from "media" to "movies" to match database data
+      movies: [
+        {
+          title: { type: String, required: true, trim: true },
+          description: { type: String, maxlength: 500, trim: true },
+          context: { type: String, maxlength: 500, trim: true },
+        },
+      ],
+      media: [
         {
           title: { type: String, required: true, trim: true },
           description: { type: String, maxlength: 500, trim: true },
