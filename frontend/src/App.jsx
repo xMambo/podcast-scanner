@@ -15,7 +15,8 @@ import {
 } from "react-bootstrap";
 import { UserButton, useUser, useAuth } from "@clerk/clerk-react";
 import PodcastSearch from "./components/PodcastSearch";
-import 'bootstrap/dist/css/bootstrap.min.css';
+import "./components/PodcastScanner.css";
+
 
 import "./PodcastScanner.css"; // Assuming this is in src/ or adjust path
 
