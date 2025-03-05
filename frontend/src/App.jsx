@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   Container,
   Button,
@@ -14,8 +14,8 @@ import {
   Pagination,
 } from "react-bootstrap";
 import { UserButton, useUser, useAuth } from "@clerk/clerk-react";
-import PodcastSearch from "./components/PodcastSearch"; // Fixed path: "../components/PodcastSearch"
-import "../PodcastScanner.css"; // Adjusted path assuming CSS is in src/
+import PodcastSearch from "./components/PodcastSearch";
+import "./PodcastScanner.css"; // Assuming this is in src/ or adjust path
 
 const API_BASE_URL = "https://podcast-scanner.onrender.com";
 
@@ -41,9 +41,11 @@ function App() {
   const { getToken } = useAuth();
 
   useEffect(() => {
-    if (user) {
-      fetchRecentFeeds();
+    if (!user) {
+      setError("Please log in to access recent feeds.");
+      return;
     }
+    fetchRecentFeeds();
   }, [user]);
 
   const fetchRecentFeeds = async () => {
@@ -51,9 +53,7 @@ function App() {
       const token = await getToken();
       console.log("Fetching recent feeds with token:", token);
       const response = await fetch(`${API_BASE_URL}/api/user/recent-feeds`, {
-        headers: {
-          "Authorization": `Bearer ${token}`,
-        },
+        headers: { "Authorization": `Bearer ${token}` },
       });
       if (!response.ok) {
         const errorData = await response.json();
@@ -126,9 +126,7 @@ function App() {
     try {
       const token = await getToken();
       const response = await fetch(url, {
-        headers: {
-          "Authorization": `Bearer ${token}`,
-        },
+        headers: { "Authorization": `Bearer ${token}` },
       });
 
       if (!response.ok) {
@@ -137,9 +135,14 @@ function App() {
       }
 
       const data = await response.json();
-      console.log("Received raw data from API:", data);
-      setEpisodes(data || []);
-      setFilteredEpisodes(data || []);
+      console.log("Received raw data from API with uniqueIds:", data.map(ep => ep.uniqueId));
+      // Ensure uniqueId is in the correct format (tag:audioboom.com,... or UUID)
+      const normalizedEpisodes = data.map(ep => ({
+        ...ep,
+        uniqueId: ep.uniqueId.startsWith("tag:audioboom.com") ? ep.uniqueId : `tag:${feedUrl},${new Date(ep.pubDate).toISOString().split('T')[0]}:/posts/${ep.uniqueId || uuidv4().split('-')[0]}`,
+      }));
+      setEpisodes(normalizedEpisodes || []);
+      setFilteredEpisodes(normalizedEpisodes || []);
       setProgressStatus("");
     } catch (err) {
       console.error("❌ Error fetching raw episodes from API for feedUrl:", feedUrl, err);
@@ -202,7 +205,7 @@ function App() {
 
     if (
       recommendations[episodeId]?.summary &&
-      (recommendations[episodeId]?.books?.length > 0 || recommendations[episodeId]?.media?.length > 0)
+      (recommendations[episodeId]?.books?.length > 0 || recommendations[episodeId]?.movies?.length > 0)
     ) {
       setProgressStatus("Complete");
       return;
@@ -235,18 +238,16 @@ function App() {
 
       const recResponse = await fetch(
         `${API_BASE_URL}/api/episode/${encodedId}/recommendations`,
-        {
-          headers: {
-            "Authorization": `Bearer ${token}`,
-          },
-        }
+        { headers: { "Authorization": `Bearer ${token}` } }
       );
       if (!recResponse.ok) {
         const errorData = await recResponse.json();
         if (recResponse.status === 404) {
           console.warn(`⚠️ Recommendations not found for episode ${episodeId} from feed ${rssFeedUrl}. Skipping.`);
           setProgressStatus("No recommendations available for this episode.");
-          setRecommendations((prev) => ({ ...prev, [episodeId]: { summary: "", books: [], media: [] } }));
+          setRecommendations((prev) => ({ ...prev, [episodeId]: { summary: "", books: [], movies: [] } }));
+        } else if (recResponse.status === 401) {
+          throw new Error("Authentication failed. Please log in again.");
         } else if (recResponse.status === 429) {
           throw new Error("Daily 'Get Recs' limit reached. Try again tomorrow.");
         } else {
@@ -258,8 +259,8 @@ function App() {
       console.log(`📢 Fetched recommendations for episode ID: ${encodedId}`, data);
 
       if (data.recommendations) {
-        const { summary, books, media } = data.recommendations;
-        if (!summary && books.length === 0 && media.length === 0) {
+        const { summary, books, movies } = data.recommendations;
+        if (!summary && books.length === 0 && movies.length === 0) {
           console.warn("⚠️ Recommendations are empty.");
           setProgressStatus("No recommendations available.");
         } else {
@@ -279,7 +280,7 @@ function App() {
   };
 
   const handlePlayAudio = (episode) => {
-    const audioUrl = episode.audioUrl;
+    const audioUrl = episode.audioUrl || "";
     if (!audioUrl) {
       setError("No audio URL available for this episode.");
       return;
@@ -287,15 +288,19 @@ function App() {
     setPlayingAudio(audioUrl === playingAudio ? null : audioUrl);
   };
 
-  const indexOfLastEpisode = currentPage * EPISODES_PER_PAGE;
-  const indexOfFirstEpisode = indexOfLastEpisode - EPISODES_PER_PAGE;
-  const currentEpisodes = filteredEpisodes.slice(indexOfFirstEpisode, indexOfLastEpisode);
-  const totalPages = Math.ceil(filteredEpisodes.length / EPISODES_PER_PAGE);
+  const currentEpisodes = useMemo(() => 
+    filteredEpisodes.slice(indexOfFirstEpisode, indexOfLastEpisode),
+    [filteredEpisodes, indexOfFirstEpisode, indexOfLastEpisode]
+  );
+  const totalPages = Math.max(1, Math.ceil(filteredEpisodes.length / EPISODES_PER_PAGE));
 
   const handlePageChange = (pageNumber) => {
     console.log("Changing page to:", pageNumber);
     setCurrentPage(pageNumber);
   };
+
+  const indexOfLastEpisode = currentPage * EPISODES_PER_PAGE;
+  const indexOfFirstEpisode = indexOfLastEpisode - EPISODES_PER_PAGE;
 
   return (
     <Container className="py-5">
@@ -410,7 +415,7 @@ function App() {
                   )}
                   {(recommendations[episodeId]?.summary ||
                     recommendations[episodeId]?.books?.length > 0 ||
-                    recommendations[episodeId]?.media?.length > 0) && (
+                    recommendations[episodeId]?.movies?.length > 0) && (
                     <Card className="mt-2">
                       <Card.Body>
                         {recommendations[episodeId]?.summary && (
@@ -430,11 +435,11 @@ function App() {
                             </ul>
                           </>
                         )}
-                        {recommendations[episodeId]?.media?.length > 0 && (
+                        {recommendations[episodeId]?.movies?.length > 0 && (
                           <>
                             <h6>Movies, Films, Documentaries, & TV Shows:</h6>
                             <ul>
-                              {recommendations[episodeId].media.map((item, idx) => (
+                              {recommendations[episodeId].movies.map((item, idx) => (
                                 <li key={`media-${idx}`}>
                                   <strong>{item.title}</strong> - 
                                   <div>{item.description}</div>
