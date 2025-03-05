@@ -14,13 +14,12 @@ import {
   Pagination,
 } from "react-bootstrap";
 import { UserButton, useUser, useAuth } from "@clerk/clerk-react";
-import PodcastSearch from "./components/PodcastSearch";
-import "./components/PodcastScanner.css";
-
-
-import "./PodcastScanner.css"; // Assuming this is in src/ or adjust path
+import PodcastSearch from "../components/PodcastSearch";
+import "../components/PodcastScanner.css"; // Updated path
 
 const API_BASE_URL = "https://podcast-scanner.onrender.com";
+
+// ... rest of App.jsx remains the same
 
 function App() {
   const [episodes, setEpisodes] = useState([]);
