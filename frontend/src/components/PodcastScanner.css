@@ -1,0 +1,26 @@
+/* frontend/src/components/PodcastScanner.css */
+.play-button {
+    width: 24px; /* Smaller, more minimal */
+    height: 24px; /* Smaller, more minimal */
+    border-radius: 50%; /* Keeps it round */
+    background-color: #e0e0e0; /* Lighter grey for subtlety */
+    border: none;
+    color: #666; /* Even lighter grey for text/icon */
+    font-size: 14px; /* Smaller symbols */
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    transition: background-color 0.3s ease;
+    margin-right: 8px; /* Reduced margin for better spacing with "Get Recs" */
+  }
+  
+  .play-button:hover {
+    background-color: #b0b0b0; /* Slightly darker grey on hover for minimal feedback */
+  }
+  
+  .play-button:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(102, 102, 102, 0.3); /* Subtle focus outline */
+  }
