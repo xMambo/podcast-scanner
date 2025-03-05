@@ -224,10 +224,11 @@ app.get("/api/episode/:uniqueId/recommendations", async (req, res) => {
     console.log(`🔍 Processing episode: ${episode.title}, uniqueId: ${decodedId}, audioUrl: ${episode.audioUrl}`);
 
     // Return existing recommendations if any data exists, even if empty
-    if (episode.recommendations) {
-      console.log(`✅ Returning existing recommendations (even if empty) for episode: ${episode.title}`);
+    if (episode.recommendations && Object.keys(episode.recommendations).length > 0) {
+      console.log(`✅ Returning existing recommendations for episode: ${episode.title}`);
       return res.json({ recommendations: episode.recommendations });
-    }
+  }
+  
 
     if (clerkId !== ownerClerkId) {
       let user = await User.findOne({ clerkId });
