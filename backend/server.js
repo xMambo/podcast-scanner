@@ -225,9 +225,15 @@ app.get("/api/episode/:uniqueId/recommendations", async (req, res) => {
 
     // Return existing recommendations if any data exists, even if empty
     if (episode.recommendations && Object.keys(episode.recommendations).length > 0) {
-      console.log(`✅ Returning existing recommendations for episode: ${episode.title}`);
-      return res.json({ recommendations: episode.recommendations });
+      // Check if the recommendations are actually populated
+      if (episode.recommendations.summary || episode.recommendations.books.length > 0 || episode.recommendations.movies.length > 0 || episode.recommendations.media.length > 0) {
+          console.log(`✅ Returning existing recommendations for episode: ${episode.title}`);
+          return res.json({ recommendations: episode.recommendations });
+      } else {
+          console.warn(`⚠️ Existing recommendations are empty, generating new ones.`);
+      }
   }
+  
   
 
     if (clerkId !== ownerClerkId) {
