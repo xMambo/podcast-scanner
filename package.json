@@ -13,12 +13,14 @@
     "dependencies": {
         "@clerk/clerk-react": "^5.24.1",
         "axios": "^1.8.1",
+        "bootstrap": "^5.3.3",
         "cors": "^2.8.5",
         "dotenv": "^16.0.3",
         "express": "^4.18.2",
         "itunes-search": "^1.0.1",
         "mongoose": "^6.13.8",
         "node-cache": "^5.1.2",
+        "react-bootstrap": "^2.10.9",
         "rss-parser": "^3.13.0",
         "uuid": "^11.1.0"
     },
