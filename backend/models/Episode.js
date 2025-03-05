@@ -1,48 +1,21 @@
 import mongoose from "mongoose";
 
-const episodeSchema = new mongoose.Schema(
-  {
-    title: { type: String, default: "Untitled Episode", trim: true },
-    pubDate: { type: Date, default: Date.now, required: true },
-    link: { type: String, default: "", trim: true },
-    uniqueId: {
-      type: String,
-      unique: true,
-      required: [true, "uniqueId is required"],
-      trim: true,
-    },
-    audioUrl: { type: String, default: "", trim: true },
-    feedUrl: { type: String, required: [true, "feedUrl is required"], trim: true },
-    recommendations: {
-      summary: { type: String, default: "", trim: true },
-      books: [
-        {
-          title: { type: String, required: true, trim: true },
-          description: { type: String, maxlength: 500, trim: true },
-          context: { type: String, maxlength: 500, trim: true },
-        },
-      ],
-      movies: [
-        {
-          title: { type: String, required: true, trim: true },
-          description: { type: String, maxlength: 500, trim: true },
-          context: { type: String, maxlength: 500, trim: true },
-        },
-      ],
-      media: [
-        {
-          title: { type: String, required: true, trim: true },
-          description: { type: String, maxlength: 500, trim: true },
-          context: { type: String, maxlength: 500, trim: true },
-        },
-      ],
-    },
+const EpisodeSchema = new mongoose.Schema({
+  title: { type: String, required: true },
+  pubDate: { type: Date, required: true },
+  link: { type: String, required: true },
+  uniqueId: { type: String, required: true, unique: true },
+  audioUrl: { type: String, default: "" },
+  feedUrl: { type: String, required: true, index: true },
+  recommendations: {
+    summary: { type: String, default: "" },
+    books: [{ title: { type: String, default: "" }, description: { type: String, default: "" }, context: { type: String, default: "" } }],
+    movies: [{ title: { type: String, default: "" }, description: { type: String, default: "" }, context: { type: String, default: "" } }],
+    media: [{ title: { type: String, default: "" }, description: { type: String, default: "" }, context: { type: String, default: "" } }]
   },
-  { timestamps: true }
-);
+  image: { type: String, default: "" },
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+  scannedAt: { type: Date, default: Date.now },
+});
 
-// Add indexes for performance
-episodeSchema.index({ uniqueId: 1 });
-episodeSchema.index({ feedUrl: 1, pubDate: -1 });
-
-export default mongoose.model("Episode", episodeSchema);
+export default mongoose.model("Episode", EpisodeSchema);

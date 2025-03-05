@@ -14,10 +14,10 @@ import {
   Pagination,
 } from "react-bootstrap";
 import { UserButton, useUser, useAuth } from "@clerk/clerk-react";
-import PodcastSearch from "./PodcastSearch";
+import PodcastSearch from "../components/PodcastSearch";
 import "./PodcastScanner.css";
 
-const API_BASE_URL = "https://podcast-scanner.onrender.com";
+const API_BASE_URL = "https://podcast-scanner.onrender.com"; // Switch to "http://localhost:5000" for local testing
 
 function PodcastScanner() {
   const [episodes, setEpisodes] = useState([]);
@@ -166,7 +166,7 @@ function PodcastScanner() {
 
   const handleKeywordsSearch = (e) => {
     const value = e.target.value;
-    console.log("Keywords search value (entire list):", value);
+    console.log("Keywords search value:", value);
     setSearchKeywords(value);
     filterEpisodes();
   };
@@ -185,7 +185,7 @@ function PodcastScanner() {
       });
     }
 
-    console.log("Filtered episodes (entire list):", filtered.map(ep => ep.title));
+    console.log("Filtered episodes:", filtered.map(ep => ep.title));
     setFilteredEpisodes(filtered);
     setCurrentPage(1);
   }, [episodes, searchKeywords]);
@@ -202,7 +202,9 @@ function PodcastScanner() {
 
     if (
       recommendations[episodeId]?.summary &&
-      (recommendations[episodeId]?.books?.length > 0 || recommendations[episodeId]?.media?.length > 0)
+      (recommendations[episodeId]?.books?.length > 0 ||
+       recommendations[episodeId]?.movies?.length > 0 ||
+       recommendations[episodeId]?.media?.length > 0)
     ) {
       setProgressStatus("Complete");
       return;
@@ -213,9 +215,8 @@ function PodcastScanner() {
 
     try {
       const token = await getToken();
-      console.log("Token for request:", token); // Log token for debugging
+      console.log("Token for request:", token);
 
-      // Save the episode and check response
       const saveResponse = await fetch(`${API_BASE_URL}/api/podcasts/single`, {
         method: "POST",
         headers: {
@@ -231,37 +232,24 @@ function PodcastScanner() {
       const savedEpisode = await saveResponse.json();
       console.log("Episode saved:", savedEpisode);
 
-      // Encode the uniqueId to handle special characters in the URL
       const encodedId = encodeURIComponent(episodeId);
-      console.log(`Encoded uniqueId for API call: ${encodedId}`);
-
-      // Fetch recommendations with the encoded uniqueId
+      console.log(`Fetching recommendations for episode ID: ${encodedId}`);
       const recResponse = await fetch(
         `${API_BASE_URL}/api/episode/${encodedId}/recommendations`,
-        {
-          headers: {
-            "Authorization": `Bearer ${token}`,
-          },
-        }
+        { headers: { "Authorization": `Bearer ${token}` } }
       );
       if (!recResponse.ok) {
         const errorData = await recResponse.json();
         throw new Error(errorData.error || `HTTP error! Status: ${recResponse.status}`);
       }
       const data = await recResponse.json();
-      console.log(`📢 Fetched recommendations for episode ID: ${encodedId}`, data);
+      console.log("Received recommendations:", data);
 
       if (data.recommendations) {
-        const { summary, books, media } = data.recommendations;
-        if (!summary && books.length === 0 && media.length === 0) {
-          console.warn("⚠️ Recommendations are empty.");
-          setProgressStatus("No recommendations available.");
-        } else {
-          setRecommendations((prev) => ({ ...prev, [episodeId]: data.recommendations }));
-          setProgressStatus("Complete");
-        }
+        setRecommendations((prev) => ({ ...prev, [episodeId]: data.recommendations }));
+        setProgressStatus("Complete");
       } else {
-        console.warn("❌ No recommendations found in response.");
+        console.warn("❌ No recommendations in response.");
         setProgressStatus("No recommendations available.");
       }
     } catch (error) {
@@ -404,6 +392,7 @@ function PodcastScanner() {
                   )}
                   {(recommendations[episodeId]?.summary ||
                     recommendations[episodeId]?.books?.length > 0 ||
+                    recommendations[episodeId]?.movies?.length > 0 ||
                     recommendations[episodeId]?.media?.length > 0) && (
                     <Card className="mt-2">
                       <Card.Body>
@@ -424,9 +413,23 @@ function PodcastScanner() {
                             </ul>
                           </>
                         )}
+                        {recommendations[episodeId]?.movies?.length > 0 && (
+                          <>
+                            <h6>Movies:</h6>
+                            <ul>
+                              {recommendations[episodeId].movies.map((movie, idx) => (
+                                <li key={`movie-${idx}`}>
+                                  <strong>{movie.title}</strong> - 
+                                  <div>{movie.description}</div>
+                                  <div><em>Context:</em> {movie.context}</div>
+                                </li>
+                              ))}
+                            </ul>
+                          </>
+                        )}
                         {recommendations[episodeId]?.media?.length > 0 && (
                           <>
-                            <h6>Movies, Films, Documentaries, & TV Shows:</h6>
+                            <h6>TV Shows, Films, & Documentaries:</h6>
                             <ul>
                               {recommendations[episodeId].media.map((item, idx) => (
                                 <li key={`media-${idx}`}>

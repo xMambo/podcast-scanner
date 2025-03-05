@@ -10,14 +10,15 @@ import saveUserRouter from "./api/saveUser.js";
 import OpenAI from "openai";
 import { ClerkExpressWithAuth } from "@clerk/clerk-sdk-node";
 import { v4 as uuidv4 } from "uuid";
-import NodeCache from "node-cache"; // For temporary caching of transcriptions
+import NodeCache from "node-cache";
+import { createHash } from "crypto"; // For hashing transcriptions
 
 dotenv.config();
 
 const app = express();
 const parser = new RSSParser();
 const openAI = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-const cache = new NodeCache({ stdTTL: 1800 }); // Cache transcriptions for 30 minutes (adjust as needed)
+const cache = new NodeCache({ stdTTL: 1800 }); // Cache for 30 minutes
 
 app.use(cors({
   origin: (origin, callback) => {
@@ -51,7 +52,6 @@ app.get("/", (req, res) => {
 });
 
 // Transcribe audio using AssemblyAI, defaulting to Nano model with Best fallback
-// Transcriptions are cached temporarily in node-cache (30 minutes) instead of MongoDB
 async function transcribeAudio(audioUrl, useNano = true) {
   const assemblyApiKey = process.env.ASSEMBLYAI_API_KEY;
   if (!assemblyApiKey) {
@@ -118,7 +118,7 @@ async function extractRecommendations(transcript, title) {
 
   console.log(`📌 Extracting recommendations from transcription (length: ${transcript.length} chars)`);
 
-  const cacheKey = `recommendations:${title}:${transcript.substring(0, 100)}`;
+  const cacheKey = `recommendations:${title}:${createHash('md5').update(transcript).digest('hex')}`;
   const cachedRecommendations = cache.get(cacheKey);
   if (cachedRecommendations) {
     console.log(`✅ Using cached recommendations for title: ${title}`);
@@ -126,7 +126,7 @@ async function extractRecommendations(transcript, title) {
   }
 
   const prompt = `
-    You are an expert analyst tasked with extracting detailed insights from a podcast episode titled "${title}". Analyze the entire following transcript and provide:
+    You are an expert analyst tasked with extracting detailed insights from a Joe Rogan podcast episode titled "${title}". Analyze the entire following transcript and provide:
     - A 5 sentence **summary** that captures the main topics, specific issues, arguments, or perspectives discussed, avoiding vague phrases like "explores related topics." **Exclude any content related to advertisements, sponsor messages, or product promotions (e.g., "This episode is brought to you by...", mentions of specific products or services for sale, or promotional segues unrelated to the core discussion). Focus only on the substantive conversation.**
     - A comprehensive list of **books** that are explicitly mentioned, referenced, or implied in the transcript, with no cap on the number. For each book, include:
       - The **title**.
@@ -225,16 +225,13 @@ app.get("/api/episode/:uniqueId/recommendations", async (req, res) => {
 
     // Return existing recommendations if any data exists, even if empty
     if (episode.recommendations && Object.keys(episode.recommendations).length > 0) {
-      // Check if the recommendations are actually populated
       if (episode.recommendations.summary || episode.recommendations.books.length > 0 || episode.recommendations.movies.length > 0 || episode.recommendations.media.length > 0) {
-          console.log(`✅ Returning existing recommendations for episode: ${episode.title}`);
-          return res.json({ recommendations: episode.recommendations });
+        console.log(`✅ Returning existing recommendations for episode: ${episode.title}`);
+        return res.json({ recommendations: episode.recommendations });
       } else {
-          console.warn(`⚠️ Existing recommendations are empty, generating new ones.`);
+        console.warn(`⚠️ Existing recommendations are empty, generating new ones.`);
       }
-  }
-  
-  
+    }
 
     if (clerkId !== ownerClerkId) {
       let user = await User.findOne({ clerkId });
@@ -257,7 +254,7 @@ app.get("/api/episode/:uniqueId/recommendations", async (req, res) => {
 
       resetDailyCountIfNeeded(user);
 
-      if (user.recsUsage.count >= 5 || user.recsUsage.apiCalls >= 10) { // Limit API calls
+      if (user.recsUsage.count >= 5 || user.recsUsage.apiCalls >= 10) {
         console.log(`❌ User ${clerkId} exceeded limits (recs: ${user.recsUsage.count}, apiCalls: ${user.recsUsage.apiCalls})`);
         return res.status(429).json({ error: "Daily 'Get Recs' or API call limit reached. Try again tomorrow." });
       }
@@ -579,19 +576,3 @@ app.use((req, res) => {
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
-
-// Optional migration script to remove existing transcriptions (run once, then remove)
-async function removeTranscriptions() {
-  try {
-    const result = await Episode.updateMany(
-      { transcription: { $exists: true } },
-      { $unset: { transcription: 1 } }
-    );
-    console.log(`✅ Removed ${result.modifiedCount} transcription fields from episodes`);
-  } catch (error) {
-    console.error("❌ Error removing transcriptions:", error.stack);
-  }
-}
-
-// Uncomment to run migration locally, then comment out or remove
-// removeTranscriptions().then(() => console.log("Migration complete")).catch(console.error);
