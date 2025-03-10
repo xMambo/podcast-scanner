@@ -1,6 +1,7 @@
 import { useState } from "react";
 import axios from "axios";
-import { Form, Button, Dropdown, Container, Spinner, Alert } from "react-bootstrap";
+import { Form, Button, Dropdown, Container, Alert } from "react-bootstrap";
+import Spinner from "react-bootstrap/Spinner";  // Updated import
 
 const PodcastSearch = ({ onPodcastSelect }) => {
   const [searchTerm, setSearchTerm] = useState("");
@@ -26,7 +27,7 @@ const PodcastSearch = ({ onPodcastSelect }) => {
         params: {
           term,
           entity: "podcast",
-          limit: 5,
+          limit: 5,  // Limit for dropdown suggestions
         },
       });
       setSearchResults(response.data.results);
@@ -58,16 +59,16 @@ const PodcastSearch = ({ onPodcastSelect }) => {
             autoComplete="off"
           />
           {loading ? (
-            <div
+            <Spinner
+              animation="border"
+              size="sm"
               style={{
                 position: "absolute",
                 right: "10px",
                 top: "50%",
                 transform: "translateY(-50%)",
               }}
-            >
-              <Spinner animation="border" size="sm" />
-            </div>
+            />
           ) : null}
         </Form.Group>
       </Form>
