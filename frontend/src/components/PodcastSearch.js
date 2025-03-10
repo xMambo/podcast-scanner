@@ -57,18 +57,12 @@ const PodcastSearch = ({ onPodcastSelect }) => {
             onChange={handleSearchChange}
             autoComplete="off"
           />
-          {loading && (
-            <div
-              style={{
-                position: "absolute",
-                right: "10px",
-                top: "50%",
-                transform: "translateY(-50%)",
-              }}
-            >
-              <Spinner animation="border" size="sm" />
-            </div>
-          )}
+          {loading ? (
+  <div style={{ position: "absolute", right: "10px", top: "50%", transform: "translateY(-50%)" }}>
+    <Spinner animation="border" size="sm" />
+  </div>
+) : null}
+
         </Form.Group>
       </Form>
 
