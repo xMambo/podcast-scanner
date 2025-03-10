@@ -14,7 +14,7 @@ import NodeCache from "node-cache";
 import { createHash } from "crypto";
 import fs from "fs";
 import axios from "axios";
-import { execSync } from "child_process"; // For running Python scripts
+import { exec } from "child_process"; // For running Python scripts asynchronously
 
 dotenv.config();
 
@@ -29,6 +29,7 @@ app.use(cors({
     const allowedOrigins = [
       process.env.FRONTEND_URL || "http://localhost:5173",
       "https://www.podsandrecs.com",
+      "https://podsandrecs.com"  // Added without 'www'
     ];
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
@@ -57,69 +58,125 @@ app.get("/", (req, res) => {
   res.send("Podcast Scanner Backend Running");
 });
 
-// Transcribe audio using Whisper (Python) with caching
-async function transcribeAudio(audioUrl) {
-    const cacheKey = `transcription:${audioUrl}`;
-    const cachedTranscription = cache.get(cacheKey);
+// Get recent feeds
+app.get("/api/user/recent-feeds", async (req, res) => {
+  const clerkId = req.auth?.userId;
 
-    if (cachedTranscription) {
-        console.log(`✅ Using cached transcription for URL: ${audioUrl}`);
-        return cachedTranscription;  // Return cached result if available
-    }
-
-    const audioFilePath = "downloaded_audio.mp3";
-    console.log(`🎤 Downloading audio file from ${audioUrl}`);
-    const response = await axios.get(audioUrl, { responseType: "stream" });
-    const writer = fs.createWriteStream(audioFilePath);
-    response.data.pipe(writer);
-
-    await new Promise((resolve, reject) => {
-        writer.on("finish", resolve);
-        writer.on("error", reject);
-    });
-
-    console.log("✅ Download complete.");
-
-    // Run Whisper Python script for transcription
-    console.log("📝 Transcribing audio using Whisper...");
-    const transcription = execSync(`python transcribe.py ${audioFilePath}`).toString();
-
-    // Cache the transcription result for 30 minutes (1800 seconds)
-    cache.set(cacheKey, transcription.trim(), 1800);
-    console.log(`✅ Cached transcription for URL: ${audioUrl}`);
-
-    // Clean up the downloaded file
-    setTimeout(() => {
-        if (fs.existsSync(audioFilePath)) {
-            fs.unlinkSync(audioFilePath);
-            console.log(`🗑️ Deleted file: ${audioFilePath}`);
-        } else {
-            console.warn(`⚠️ Warning: File not found for deletion: ${audioFilePath}`);
-        }
-    }, 5000);  // Delay deletion by 5 seconds
-
-    console.log("✅ Transcription completed.");
-    return transcription.trim();
-}
-
-// Test transcription endpoint
-app.get("/api/test-transcription", async (req, res) => {
-  const testAudioUrl = "https://traffic.megaphone.fm/APO1708413358.mp3";
+  if (!clerkId) {
+    return res.status(401).json({ error: "Unauthorized: Missing Clerk ID" });
+  }
 
   try {
-    console.log(`🎧 Testing Whisper transcription for URL: ${testAudioUrl}`);
-    const transcription = await transcribeAudio(testAudioUrl);
-    console.log(`✅ Transcription result:`, transcription);
-    res.json({ transcription });
+    const user = await User.findOne({ clerkId });
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+    res.json(user.recentFeeds || []);
   } catch (error) {
-    console.error(`❌ Error in test-transcription route:`, error.stack);
-    res.status(500).json({ error: error.message });
+    console.error("❌ Error fetching recent feeds:", error.stack);
+    res.status(500).json({ error: "Failed to fetch recent feeds" });
   }
 });
 
+// Save recent feeds
+app.post("/api/user/recent-feeds", async (req, res) => {
+  const clerkId = req.auth?.userId;
+  const { recentFeeds } = req.body;
+
+  if (!clerkId) {
+    return res.status(401).json({ error: "Unauthorized: Missing Clerk ID" });
+  }
+
+  try {
+    const user = await User.findOneAndUpdate(
+      { clerkId },
+      { $set: { recentFeeds } },
+      { upsert: true, new: true }
+    );
+    res.json(user.recentFeeds);
+  } catch (error) {
+    console.error("❌ Error saving recent feeds:", error.stack);
+    res.status(500).json({ error: "Failed to save recent feeds" });
+  }
+});
+
+// Fetch raw episodes from RSS feed
+app.get("/api/podcasts/raw", async (req, res) => {
+  const { feedUrl } = req.query;
+
+  if (!feedUrl) {
+    return res.status(400).json({ error: "Missing feed URL" });
+  }
+
+  try {
+    const parsedFeed = await parser.parseURL(feedUrl);
+    const episodes = parsedFeed.items.map((item) => ({
+      title: item.title,
+      pubDate: item.pubDate,
+      audioUrl: item.enclosure?.url || null,
+      description: item.contentSnippet || "",
+      uniqueId: item.guid || uuidv4(),
+    }));
+    res.json(episodes);
+  } catch (error) {
+    console.error("❌ Error fetching raw episodes:", error.stack);
+    res.status(500).json({ error: "Failed to fetch episodes" });
+  }
+});
+
+// Transcribe audio using Whisper (Python) with caching
+async function transcribeAudio(audioUrl) {
+  const cacheKey = `transcription:${audioUrl}`;
+  const cachedTranscription = cache.get(cacheKey);
+
+  if (cachedTranscription) {
+    console.log(`✅ Using cached transcription for URL: ${audioUrl}`);
+    return cachedTranscription;
+  }
+
+  const audioFilePath = "downloaded_audio.mp3";
+  console.log(`🎤 Downloading audio file from ${audioUrl}`);
+  const response = await axios.get(audioUrl, { responseType: "stream" });
+  const writer = fs.createWriteStream(audioFilePath);
+  response.data.pipe(writer);
+
+  await new Promise((resolve, reject) => {
+    writer.on("finish", resolve);
+    writer.on("error", reject);
+  });
+
+  console.log("✅ Download complete.");
+
+  // Run Whisper Python script asynchronously
+  const transcription = await new Promise((resolve, reject) => {
+    exec(`python transcribe.py ${audioFilePath}`, (error, stdout, stderr) => {
+      if (error) {
+        console.error("❌ Error in transcription:", stderr);
+        return reject(stderr);
+      }
+      resolve(stdout.trim());
+    });
+  });
+
+  cache.set(cacheKey, transcription, 1800);  // Cache for 30 minutes
+  console.log(`✅ Cached transcription for URL: ${audioUrl}`);
+
+  // Clean up the downloaded file
+  setTimeout(() => {
+    if (fs.existsSync(audioFilePath)) {
+      fs.unlinkSync(audioFilePath);
+      console.log(`🗑️ Deleted file: ${audioFilePath}`);
+    } else {
+      console.warn(`⚠️ Warning: File not found for deletion: ${audioFilePath}`);
+    }
+  }, 5000);  // Delay deletion by 5 seconds
+
+  console.log("✅ Transcription completed.");
+  return transcription;
+}
+
 // Fetch and generate recommendations with Whisper transcription
 app.get("/api/episode/:uniqueId/recommendations", async (req, res) => {
-  console.log("GET /api/episode/:uniqueId/recommendations - Request headers:", req.headers);
   const { uniqueId } = req.params;
   const clerkId = req.auth?.userId;
 
@@ -128,7 +185,6 @@ app.get("/api/episode/:uniqueId/recommendations", async (req, res) => {
   }
 
   try {
-    console.log(`🔄 Fetching recommendations for episode uniqueId: ${uniqueId}`);
     const decodedId = decodeURIComponent(uniqueId);
     const episode = await Episode.findOne({ uniqueId: decodedId });
 
@@ -137,7 +193,6 @@ app.get("/api/episode/:uniqueId/recommendations", async (req, res) => {
     }
 
     if (episode.recommendations?.summary) {
-      console.log(`✅ Returning existing recommendations.`);
       return res.json({ recommendations: episode.recommendations });
     }
 
