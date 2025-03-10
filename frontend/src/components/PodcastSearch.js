@@ -26,7 +26,7 @@ const PodcastSearch = ({ onPodcastSelect }) => {
         params: {
           term,
           entity: "podcast",
-          limit: 5, // Limit for dropdown suggestions
+          limit: 5,
         },
       });
       setSearchResults(response.data.results);
