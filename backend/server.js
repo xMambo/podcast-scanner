@@ -49,11 +49,10 @@ mongoose.connect(process.env.MONGODB_URI, { useNewUrlParser: true, useUnifiedTop
   .catch((err) => console.error(`❌ MongoDB connection error:`, err.stack));
 
 app.get("/", (req, res) => {
-  console.log("GET / request received");
   res.send("Podcast Scanner Backend Running");
 });
 
-// Transcribe audio using Whisper (Python)
+// 🆕 Transcribe audio using Whisper (Python)
 async function transcribeAudio(audioUrl) {
   const audioFilePath = "downloaded_audio.mp3";
   console.log(`🎤 Downloading audio file from ${audioUrl}`);
@@ -77,18 +76,72 @@ async function transcribeAudio(audioUrl) {
   return transcription.trim();
 }
 
+// 🆕 Route to get recommendations for an episode
+app.get("/api/episode/:uniqueId/recommendations", async (req, res) => {
+  const { uniqueId } = req.params;
+  console.log(`🔍 Fetching recommendations for episode ID: ${uniqueId}`);
+
+  try {
+    const episode = await Episode.findOne({ uniqueId });
+    if (!episode) {
+      return res.status(404).json({ error: "Episode not found" });
+    }
+
+    if (episode.recommendations?.summary) {
+      console.log(`✅ Returning cached recommendations.`);
+      return res.json({ recommendations: episode.recommendations });
+    }
+
+    if (!episode.audioUrl) {
+      return res.status(400).json({ error: "No audio URL available" });
+    }
+
+    const transcription = await transcribeAudio(episode.audioUrl);
+
+    // Extract recommendations (dummy function here for example)
+    const newRecommendations = {
+      summary: `Transcription summary for episode ${episode.title}`,
+      books: [],
+      movies: [],
+      media: []
+    };
+
+    await Episode.updateOne(
+      { uniqueId },
+      { $set: { recommendations: newRecommendations } }
+    );
+
+    console.log(`✅ Recommendations saved for episode: ${uniqueId}`);
+    res.json({ recommendations: newRecommendations });
+  } catch (error) {
+    console.error("❌ Error fetching recommendations:", error.stack);
+    res.status(500).json({ error: "Failed to fetch recommendations" });
+  }
+});
+
+// 🆕 Route to test transcription
 app.get("/api/test-transcription", async (req, res) => {
   const testAudioUrl = "https://traffic.megaphone.fm/APO1708413358.mp3";
 
   try {
     console.log(`🎧 Testing Whisper transcription for URL: ${testAudioUrl}`);
     const transcription = await transcribeAudio(testAudioUrl);
-    console.log(`✅ Transcription result:`, transcription);
     res.json({ transcription });
   } catch (error) {
     console.error(`❌ Error in test-transcription route:`, error.stack);
     res.status(500).json({ error: error.message });
   }
+});
+
+// Error handler for invalid JSON response
+app.use((err, req, res, next) => {
+  console.error("❌ Error handler:", err.stack);
+  res.status(500).json({ error: "Internal Server Error" });
+});
+
+// Catch-all route for undefined endpoints
+app.use((req, res) => {
+  res.status(404).json({ error: "Route not found" });
 });
 
 const PORT = process.env.PORT || 5000;
