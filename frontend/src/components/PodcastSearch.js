@@ -1,6 +1,6 @@
 import { useState } from "react";
 import axios from "axios";
-import { Form, Button, Dropdown, Container, Alert, Spinner } from "react-bootstrap";  // Unified import
+import { Form, Dropdown, Container, Alert, Spinner } from "react-bootstrap";  // Unified import
 
 const PodcastSearch = ({ onPodcastSelect }) => {
   const [searchTerm, setSearchTerm] = useState("");
@@ -57,13 +57,11 @@ const PodcastSearch = ({ onPodcastSelect }) => {
             onChange={handleSearchChange}
             autoComplete="off"
           />
-          {loading ? (
-  <div style={{ position: "absolute", right: "10px", top: "50%", transform: "translateY(-50%)" }}>
-    Loading...
-  </div>
-) : null}
-
-
+          {loading && (
+            <div style={{ position: "absolute", right: "10px", top: "50%", transform: "translateY(-50%)" }}>
+              <Spinner animation="border" size="sm" />
+            </div>
+          )}
         </Form.Group>
       </Form>
 
