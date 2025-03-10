@@ -14,7 +14,7 @@ import {
   Pagination,
 } from "react-bootstrap";
 import { UserButton, useUser, useAuth } from "@clerk/clerk-react";
-import PodcastSearch from "../components/PodcastSearch";
+import PodcastSearch from '@/components/PodcastSearch.jsx';
 import "./PodcastScanner.css";
 
 const API_BASE_URL = "https://podcast-scanner.onrender.com"; // Switch to "http://localhost:5000" for local testing
