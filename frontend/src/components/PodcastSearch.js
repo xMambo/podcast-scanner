@@ -1,7 +1,6 @@
 import { useState } from "react";
 import axios from "axios";
-import { Form, Button, Dropdown, Container, Alert } from "react-bootstrap";
-import Spinner from "react-bootstrap/Spinner";  // Updated import
+import { Form, Button, Dropdown, Container, Alert, Spinner } from "react-bootstrap";  // Unified import
 
 const PodcastSearch = ({ onPodcastSelect }) => {
   const [searchTerm, setSearchTerm] = useState("");
