@@ -59,9 +59,10 @@ const PodcastSearch = ({ onPodcastSelect }) => {
           />
           {loading ? (
   <div style={{ position: "absolute", right: "10px", top: "50%", transform: "translateY(-50%)" }}>
-    <Spinner animation="border" size="sm" />
+    Loading...
   </div>
 ) : null}
+
 
         </Form.Group>
       </Form>
