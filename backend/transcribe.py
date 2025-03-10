@@ -6,14 +6,20 @@ import requests
 # Specify the full path to ffmpeg explicitly if needed
 os.environ["PATH"] += os.pathsep + r"C:\ffmpeg\bin"
 
+# Force UTF-8 encoding for Windows CMD
+import sys
+sys.stdout.reconfigure(encoding='utf-8')
+
 # Function to download and save audio file locally
 def download_audio(url, filename="downloaded_audio.mp3"):
-    print(f"🎤 Downloading audio file from {url}")
+    print(f"Downloading audio file from {url}")  # Removed emoji to avoid Unicode error
+
     response = requests.get(url, stream=True)
     with open(filename, "wb") as file:
         for chunk in response.iter_content(chunk_size=8192):
             file.write(chunk)
-    print("✅ Download complete!")
+    print("Download complete!")  # Removed emoji to avoid Unicode error
+
     return filename
 
 # Function to transcribe audio using Whisper
@@ -23,7 +29,7 @@ def transcribe_audio(audio_url):
 
     # Check if CUDA (GPU) is available and use it
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    print(f"🚀 Using device: {device}")
+    print(f"Using device: {device}")  # Removed emoji to avoid Unicode error
 
     # Clear CUDA cache and enable fast algorithms if using GPU
     if device == "cuda":
@@ -35,10 +41,10 @@ def transcribe_audio(audio_url):
     model = model.to(dtype=torch.float32)
 
     # Transcribe the audio
-    print("📝 Transcribing audio...")
+    print("Transcribing audio...")  # Removed emoji to avoid Unicode error
     result = model.transcribe(audio_file)
-    print("✅ Transcription complete!")
-    print(f"Transcription result: {result['text']}")
+    print("Transcription complete!")  # Removed emoji to avoid Unicode error
+    
 
     # Cleanup downloaded audio file
     os.remove(audio_file)
