@@ -14,7 +14,7 @@ import {
   Pagination,
 } from "react-bootstrap";
 import { UserButton, useUser, useAuth } from "@clerk/clerk-react";
-import PodcastSearch from "@/components/PodcastSearch";
+import PodcastSearch from '@/components/PodcastSearch.jsx';
 import "@/components/PodcastScanner.css"; // Updated path
 
 const API_BASE_URL = import.meta.env.MODE === 'production'
