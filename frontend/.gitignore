@@ -27,3 +27,5 @@ node_modules
 build
 .env
 git_filter_repo.py
+
+.vercel
