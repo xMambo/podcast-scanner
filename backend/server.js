@@ -1,29 +1,20 @@
 // Imports
-import mongoose from "mongoose";
 import express from "express";
+import mongoose from "mongoose";
 import cors from "cors";
 import dotenv from "dotenv";
 import RSSParser from "rss-parser";
-import Episode from "./models/Episode.js";
-import User from "./models/User.js";
-import saveUserRouter from "./api/saveUser.js";
 import OpenAI from "openai";
 import { ClerkExpressWithAuth, requireAuth } from "@clerk/clerk-sdk-node";
 import { v4 as uuidv4 } from "uuid";
-import NodeCache from "node-cache";
-import { createHash } from "crypto";
-import fs from "fs";
 import axios from "axios";
-import { exec } from "child_process";
+import Episode from "./models/Episode.js"; // MongoDB Episode model
+import User from "./models/User.js"; // MongoDB User model
+import saveUserRouter from "./api/saveUser.js";
 
 dotenv.config();
-
 const app = express();
 const parser = new RSSParser();
-const openAI = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-const cache = new NodeCache({ stdTTL: 1800 });
-
-const API_BASE_URL = "/api";
 
 // Middleware
 app.use(cors({
@@ -52,7 +43,7 @@ app.get("/", (req, res) => {
   res.send("Podcast Scanner Backend Running");
 });
 
-// 🛠 Fix: Save episode to MongoDB
+// 🛠 Save episode to MongoDB
 app.post("/api/podcasts/single", requireAuth, async (req, res) => {
   const episodeData = req.body;
   if (!episodeData.uniqueId) {
@@ -71,12 +62,11 @@ app.post("/api/podcasts/single", requireAuth, async (req, res) => {
   }
 });
 
-// 🛠 Fix: Get episode recommendations
+// 🛠 Fetch recommendations for an episode
 app.get("/api/episode/:uniqueId/recommendations", requireAuth, async (req, res) => {
   const { uniqueId } = req.params;
   try {
-    const decodedId = decodeURIComponent(uniqueId);
-    const episode = await Episode.findOne({ uniqueId: decodedId });
+    const episode = await Episode.findOne({ uniqueId });
     if (!episode) {
       return res.status(404).json({ error: "Episode not found" });
     }
@@ -87,7 +77,7 @@ app.get("/api/episode/:uniqueId/recommendations", requireAuth, async (req, res) 
   }
 });
 
-// Get recent feeds
+// Fetch recent feeds
 app.get("/api/user/recent-feeds", requireAuth, async (req, res) => {
   const clerkId = req.auth.userId;
   try {
@@ -119,7 +109,7 @@ app.post("/api/user/recent-feeds", requireAuth, async (req, res) => {
   }
 });
 
-// Fetch raw episodes from RSS feed
+// 🛠 Fetch episodes from RSS feed
 app.get("/api/podcasts/raw", async (req, res) => {
   const { feedUrl } = req.query;
   if (!feedUrl) {
@@ -141,11 +131,58 @@ app.get("/api/podcasts/raw", async (req, res) => {
   }
 });
 
-// Catch-all route to ensure JSON responses
+// 🛠 Transcribe episode audio using Assembly AI
+app.post("/api/podcasts/transcribe", requireAuth, async (req, res) => {
+  const { audioUrl } = req.body;
+  if (!audioUrl) {
+    return res.status(400).json({ error: "Missing audio URL" });
+  }
+
+  try {
+    console.log(`📢 Sending ${audioUrl} to Assembly AI`);
+
+    // Step 1: Request transcription
+    const response = await axios.post(
+      "https://api.assemblyai.com/v2/transcript",
+      { audio_url: audioUrl },
+      { headers: { authorization: process.env.ASSEMBLY_AI_API_KEY } }
+    );
+
+    const transcriptId = response.data.id;
+
+    // Step 2: Poll for transcription completion
+    let transcript;
+    while (true) {
+      const status = await axios.get(
+        `https://api.assemblyai.com/v2/transcript/${transcriptId}`,
+        { headers: { authorization: process.env.ASSEMBLY_AI_API_KEY } }
+      );
+
+      if (status.data.status === "completed") {
+        transcript = status.data.text;
+        break;
+      } else if (status.data.status === "failed") {
+        throw new Error("Assembly AI transcription failed.");
+      }
+
+      console.log("🔄 Transcription in progress... Retrying in 5 seconds");
+      await new Promise((resolve) => setTimeout(resolve, 5000));
+    }
+
+    // Return transcription result
+    res.json({ transcription: transcript });
+  } catch (error) {
+    console.error("❌ Error transcribing audio:", error.stack);
+    res.status(500).json({ error: "Transcription failed" });
+  }
+});
+
+// Catch-all route
 app.use((req, res) => {
   console.log(`Unhandled route: ${req.method} ${req.url}`);
   res.status(404).json({ error: "Route not found" });
 });
 
+// Start server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
